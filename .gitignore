@@ -1,0 +1,26 @@
+# Local backups and exported student data
+/backups/
+/exports/
+HSEDUTRACK_BACKUP_*.json
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+credentials*.json
+service-account*.json
+*.pem
+*.key
+
+# Dependencies, build output, and logs
+node_modules/
+dist/
+*.log
+
+# Operating system files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Local development worktrees
+/.worktrees/
