@@ -135,7 +135,29 @@
         .gradebook-scroll-tools { display:flex; align-items:center; gap:8px; padding:8px 12px; background:#F3EECA; border-bottom:2px solid #0D530E; font-size:11px; font-weight:700; }
         .gradebook-scroll-tools span { flex:1; }
         .gradebook-scroll-tools button { width:40px; height:40px; border:2px solid #0D530E; background:#FBF5DD; font-size:20px; cursor:pointer; }
+        /* Fixed frames for uploaded photos and character images. */
+        img { max-width:100%; }
+        #res-avatar { display:block; width:72px; height:72px; min-width:72px; object-fit:cover; }
+        #rp-avatar { display:block; width:80px; height:80px; object-fit:cover; }
+        #behavior-student-avatar { display:block; width:48px; height:48px; object-fit:cover; }
+        #reveal-sprite-img { display:block; max-width:100%; max-height:100%; object-fit:contain; }
+        #image-viewer-frame { width:min(100%,760px); max-height:calc(100dvh - 112px); display:flex; align-items:center; justify-content:center; overflow:hidden; }
+        #image-viewer-img { display:block; width:auto; height:auto; max-width:100%; max-height:calc(100dvh - 138px); object-fit:contain; }
+        .teacher-primary-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+        .teacher-primary-actions > button { min-height:42px; }
+        .teacher-more-tools summary { min-height:42px; display:flex; align-items:center; cursor:pointer; list-style:none; }
+        .teacher-more-tools summary::-webkit-details-marker { display:none; }
+        .teacher-more-tools[open] summary { background:#E7E1B1; }
+        .teacher-more-list { display:flex; flex-wrap:wrap; gap:8px; padding:12px; margin-top:10px; background:#FBF5DD; border:2px solid #0D530E; }
+        .teacher-more-list button { min-height:40px; }
+        #student-search-panel input:focus-visible, .teacher-more-tools summary:focus-visible, button:focus-visible, select:focus-visible { outline:3px solid #306D29; outline-offset:2px; }
+        @media (min-width:640px) { #res-avatar { width:88px; height:88px; min-width:88px; } }
         @media (max-width:639px) {
+            .teacher-primary-actions { width:100%; }
+            .teacher-primary-actions > button { flex:1 1 auto; }
+            .teacher-more-tools { width:100%; }
+            .teacher-more-tools summary { justify-content:center; }
+            .teacher-more-list button { flex:1 1 calc(50% - 8px); }
             #teacher-gradebook-scroll { scroll-padding-left:154px; max-height:65vh; }
             #teacher-gradebook-table th:first-child, #teacher-gradebook-table td:first-child { width:154px; min-width:154px; max-width:154px; padding-left:8px; padding-right:8px; }
             #teacher-gradebook-table td:first-child > div { width:136px; gap:6px; }
@@ -156,7 +178,7 @@
                 <!-- Left Brand & Cloud Status -->
                 <div class="flex items-center gap-3 min-w-0">
                     <div class="w-10 h-10 sm:w-11 sm:h-11 bg-[#E7E1B1] border-[2.5px] border-[#0D530E] shadow-[3px_3px_0px_#0D530E] flex items-center justify-center overflow-hidden shrink-0">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/4/4d/Hs_logo_mid.png" alt="Logo" class="w-7 h-7 object-contain">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/4/4d/Hs_logo_mid.png" alt="โลโก้ HongSon EduTrack" class="w-7 h-7 object-contain">
                     </div>
                     <div class="flex flex-col">
                         <div class="flex items-center gap-1.5">
@@ -175,7 +197,7 @@
                 </div>
 
                 <!-- Right Segmented Navigation Dock -->
-                <div class="flex items-center bg-[#E7E1B1] p-1 border-[2px] border-[#0D530E] shadow-[3px_3px_0px_#0D530E] gap-1 shrink-0">
+                <div class="hidden md:flex items-center bg-[#E7E1B1] p-1 border-[2px] border-[#0D530E] shadow-[3px_3px_0px_#0D530E] gap-1 shrink-0">
                     <button onclick="switchView('student')" id="btn-nav-student" class="px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-extrabold bg-[#306D29] text-[#FBF5DD] border-[2px] border-[#0D530E] shadow-[2px_2px_0px_#0D530E] transition-all uppercase tracking-wider cursor-pointer">
                         นักเรียน
                     </button>
@@ -280,7 +302,7 @@
                     <div class="p-5 sm:p-7 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-5">
                         <div class="flex items-center gap-4 sm:gap-5">
                             <div class="relative shrink-0">
-                                <img id="res-avatar" src="" class="w-18 h-18 sm:w-22 sm:h-22 object-cover border-[2.5px] border-[#0D530E] shadow-[3px_3px_0px_#0D530E] bg-[#E7E1B1]" title="คลิกเพื่อดูรูปใหญ่">
+                                <img id="res-avatar" src="" class="object-cover border-[2.5px] border-[#0D530E] shadow-[3px_3px_0px_#0D530E] bg-[#E7E1B1]" alt="รูปโปรไฟล์นักเรียน" title="คลิกเพื่อดูรูปใหญ่">
                                 <button onclick="promptStudentAvatarUpdate(); event.stopPropagation();" class="absolute -bottom-2 -right-2 bg-[#E7E1B1] hover:bg-[#306D29] text-[#0D530E] hover:text-[#FBF5DD] border-[2px] border-[#0D530E] w-7 h-7 flex items-center justify-center shadow-[2px_2px_0px_#0D530E] text-xs font-black cursor-pointer" title="เปลี่ยนรูปโปรไฟล์">✎</button>
                             </div>
                             <div>
@@ -463,14 +485,21 @@
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2 flex-wrap w-full lg:w-auto">
-                    <button onclick="openRandomPicker()" class="bg-[#FBF5DD] hover:bg-[#306D29] text-[#0D530E] hover:text-[#FBF5DD] border-[2px] border-[#0D530E] px-3.5 py-2 text-xs font-bold shadow-[2.5px_2.5px_0px_#0D530E] transition-colors uppercase cursor-pointer">🎲 สุ่มชื่อ</button>
-                    <button onclick="openBulkBehaviorModal()" class="bg-[#FBF5DD] hover:bg-[#306D29] text-[#0D530E] hover:text-[#FBF5DD] border-[2px] border-[#0D530E] px-3.5 py-2 text-xs font-bold shadow-[2.5px_2.5px_0px_#0D530E] transition-colors uppercase cursor-pointer">🌟 ให้ดาวกลุ่ม</button>
-                    <button onclick="openScannerModal()" class="bg-[#FBF5DD] hover:bg-[#306D29] text-[#0D530E] hover:text-[#FBF5DD] border-[2px] border-[#0D530E] px-3.5 py-2 text-xs font-bold shadow-[2.5px_2.5px_0px_#0D530E] transition-colors uppercase cursor-pointer">📷 สแกน QR</button>
-                    <button onclick="printQRCards()" class="bg-[#FBF5DD] hover:bg-[#306D29] text-[#0D530E] hover:text-[#FBF5DD] border-[2px] border-[#0D530E] px-3.5 py-2 text-xs font-bold shadow-[2.5px_2.5px_0px_#0D530E] transition-colors uppercase cursor-pointer">📇 พิมพ์บัตร QR</button>
-                    <button onclick="exportCSV()" class="bg-[#FBF5DD] hover:bg-[#306D29] text-[#0D530E] hover:text-[#FBF5DD] border-[2px] border-[#0D530E] px-3.5 py-2 text-xs font-bold shadow-[2.5px_2.5px_0px_#0D530E] transition-colors uppercase cursor-pointer">📥 ส่งออก CSV</button>
-                    <button onclick="toggleAdminTools()" class="bg-[#306D29] hover:bg-[#0D530E] text-[#FBF5DD] border-[2px] border-[#0D530E] px-4 py-2 text-xs font-black shadow-[2.5px_2.5px_0px_#0D530E] transition-colors uppercase cursor-pointer">⚙️ จัดการห้อง / เพิ่มงาน</button>
-                    <button onclick="logoutTeacher()" class="bg-[#0D530E] text-[#FBF5DD] border-[2px] border-[#0D530E] px-3.5 py-2 text-xs font-bold shadow-[2.5px_2.5px_0px_#306D29] uppercase cursor-pointer">🔒 ออก</button>
+                <div class="w-full lg:w-auto">
+                    <div class="teacher-primary-actions">
+                        <button type="button" onclick="toggleAdminTools()" class="bg-[#306D29] hover:bg-[#0D530E] text-[#FBF5DD] border-[2px] border-[#0D530E] px-4 py-2 text-xs font-black shadow-[2.5px_2.5px_0px_#0D530E] transition-colors cursor-pointer">+ จัดการห้อง / เพิ่มงาน</button>
+                        <button type="button" onclick="openScannerModal()" class="bg-[#FBF5DD] hover:bg-[#306D29] text-[#0D530E] hover:text-[#FBF5DD] border-[2px] border-[#0D530E] px-3.5 py-2 text-xs font-bold shadow-[2.5px_2.5px_0px_#0D530E] transition-colors cursor-pointer">📷 ตรวจงานด้วย QR</button>
+                        <button type="button" onclick="logoutTeacher()" class="bg-[#FBF5DD] hover:bg-[#E7E1B1] text-[#0D530E] border-[2px] border-[#0D530E] px-3.5 py-2 text-xs font-bold cursor-pointer">ออกจากระบบ</button>
+                    </div>
+                    <details class="teacher-more-tools">
+                        <summary class="mt-2 bg-[#FBF5DD] text-[#0D530E] border-[2px] border-[#0D530E] px-3.5 py-2 text-xs font-bold">เครื่องมืออื่น ๆ ▾</summary>
+                        <div class="teacher-more-list">
+                            <button type="button" onclick="openRandomPicker()" class="bg-[#FBF5DD] hover:bg-[#E7E1B1] border-[2px] border-[#0D530E] px-3 py-2 text-xs font-bold cursor-pointer">🎲 สุ่มชื่อ</button>
+                            <button type="button" onclick="openBulkBehaviorModal()" class="bg-[#FBF5DD] hover:bg-[#E7E1B1] border-[2px] border-[#0D530E] px-3 py-2 text-xs font-bold cursor-pointer">🌟 ให้ดาวกลุ่ม</button>
+                            <button type="button" onclick="printQRCards()" class="bg-[#FBF5DD] hover:bg-[#E7E1B1] border-[2px] border-[#0D530E] px-3 py-2 text-xs font-bold cursor-pointer">📇 พิมพ์บัตร QR</button>
+                            <button type="button" onclick="exportCSV()" class="bg-[#FBF5DD] hover:bg-[#E7E1B1] border-[2px] border-[#0D530E] px-3 py-2 text-xs font-bold cursor-pointer">📥 ส่งออก CSV</button>
+                        </div>
+                    </details>
                 </div>
             </div>
 
@@ -728,7 +757,7 @@
                 <div class="w-full md:w-3/5 flex flex-col items-center justify-center relative z-10">
                     <div id="rp-display-box" class="w-full bg-[#FBF5DD] border-[5px] border-[#0D530E]  p-6 text-center shadow-[6px_6px_0px_#0D530E]  mb-6 flex flex-col items-center justify-center min-h-[180px]">
                         <div id="rp-avatar-container" class="hidden mb-3 justify-center">
-                            <img id="rp-avatar" src="" class="w-20 h-20 rounded-none border-[4px] border-[#0D530E] object-cover bg-[#FBF5DD]">
+                            <img id="rp-avatar" src="" alt="รูปนักเรียนที่สุ่มได้" class="w-20 h-20 rounded-none border-[4px] border-[#0D530E] object-cover bg-[#FBF5DD]">
                         </div>
                         <div id="rp-name" class="text-2xl sm:text-4xl font-black text-[#0D530E] uppercase tracking-wide w-full leading-tight break-words px-2">READY?</div>
                         <div id="rp-id" class="text-[#306D29] font-black mt-2 text-sm sm:text-base uppercase tracking-widest h-6"></div>
@@ -760,7 +789,7 @@
             </div>
             <div class="p-5 overflow-y-auto custom-scrollbar flex flex-col">
                 <div class="flex items-center gap-3 mb-4 pb-3 border-b-[3px] border-[#0D530E] ">
-                    <img id="behavior-student-avatar" src="" class="w-12 h-12 border-[3px] border-[#0D530E] object-cover bg-[#FBF5DD]">
+                    <img id="behavior-student-avatar" src="" alt="รูปนักเรียน" class="w-12 h-12 border-[3px] border-[#0D530E] object-cover bg-[#FBF5DD]">
                     <div>
                         <h3 id="behavior-student-name" class="text-lg font-black text-[#0D530E]  uppercase">ชื่อ-สกุล</h3>
                         <p id="behavior-student-score" class="text-xs font-black text-[#306D29]">คะแนนพฤติกรรมสะสม: 0 ดาว</p>
@@ -1035,7 +1064,7 @@
                 ✨ NEW FIGURE UNLOCKED!
             </div>
             <div class="w-48 h-48 sm:w-56 sm:h-56 bg-[#E7E1B1] border-[2.5px] border-[#0D530E] shadow-[4px_4px_0px_#0D530E] flex items-center justify-center my-3 p-4">
-                <img id="reveal-sprite-img" src="" class="w-full h-full object-contain select-none anim-pop cursor-pointer" onclick="closeGachaReveal()">
+                <img id="reveal-sprite-img" src="" alt="ตัวละครที่ได้รับ" class="w-full h-full object-contain select-none anim-pop cursor-pointer" onclick="closeGachaReveal()">
             </div>
             <h3 id="reveal-sprite-title" class="text-xl sm:text-2xl font-black text-[#0D530E] uppercase tracking-tight mt-1">CHARACTER NAME</h3>
             <p id="reveal-sprite-exp" class="text-xs font-bold text-[#306D29] uppercase tracking-wide bg-[#E7E1B1] px-3 py-1 border border-[#0D530E] mt-1 mb-5">🌟 +10 SPRITE EXP</p>
@@ -1051,8 +1080,8 @@
             <button onclick="closeImageViewer()" class="absolute top-4 right-4 sm:-top-10 sm:-right-10 text-[#FBF5DD] bg-[#0D530E] border-[4px] border-[#0D530E]  shadow-[4px_4px_0px_#0D530E] rounded-none p-3 z-50 transition-all cursor-pointer">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
-            <div class="bg-[#FBF5DD]  p-2 border-[6px] border-[#0D530E]  shadow-[12px_12px_0px_#E7E1B1]">
-                <img id="image-viewer-img" src="" class="max-w-full max-h-[80vh] object-contain select-none" onclick="event.stopPropagation()">
+            <div id="image-viewer-frame" class="bg-[#FBF5DD]  p-2 border-[6px] border-[#0D530E]  shadow-[12px_12px_0px_#E7E1B1]">
+                <img id="image-viewer-img" src="" alt="ภาพขยาย" class="max-w-full max-h-[80vh] object-contain select-none" onclick="event.stopPropagation()">
             </div>
         </div>
     </div>
