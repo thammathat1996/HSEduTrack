@@ -128,8 +128,10 @@
         .cloud-refresh-bar button:disabled { opacity:.6; cursor:wait; }
         .cloud-refresh-bar[data-state="error"] { background:#F5DCD6; }
         .save-feedback button { padding:8px 12px; border:2px solid currentColor; font-weight:800; background:#FBF5DD; cursor:pointer; }
-        #teacher-gradebook-scroll { overscroll-behavior-x:contain; scroll-padding-left:245px; -webkit-overflow-scrolling:touch; }
-        #teacher-gradebook-table th:first-child, #teacher-gradebook-table td:first-child { width:245px; min-width:245px; max-width:245px; }
+        #teacher-gradebook-scroll { overscroll-behavior-x:contain; scroll-padding-left:260px; -webkit-overflow-scrolling:touch; }
+        #teacher-gradebook-table th:first-child, #teacher-gradebook-table td:first-child { width:260px; min-width:260px; max-width:260px; }
+        .gradebook-student-name { display:block; min-width:0; font-size:16px; line-height:1.4; font-weight:800; overflow-wrap:anywhere; }
+        .gradebook-summary-heading { display:inline-block; writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; font-size:12px; font-weight:900; line-height:1.2; }
         #teacher-gradebook-table td:focus-within { outline:2px solid #306D29; outline-offset:-2px; }
         #teacher-gradebook-table input[type="number"]:focus { outline:3px solid #306D29; outline-offset:1px; }
         .gradebook-scroll-tools { display:flex; align-items:center; gap:8px; padding:8px 12px; background:#F3EECA; border-bottom:2px solid #0D530E; font-size:11px; font-weight:700; }
@@ -160,9 +162,8 @@
             .teacher-more-list button { flex:1 1 calc(50% - 8px); }
             #teacher-gradebook-scroll { scroll-padding-left:154px; max-height:65vh; }
             #teacher-gradebook-table th:first-child, #teacher-gradebook-table td:first-child { width:154px; min-width:154px; max-width:154px; padding-left:8px; padding-right:8px; }
-            #teacher-gradebook-table td:first-child > div { width:136px; gap:6px; }
-            #teacher-gradebook-table td:first-child img { display:none; }
-            #teacher-gradebook-table td:first-child .truncate { max-width:104px; white-space:normal; overflow:visible; overflow-wrap:anywhere; font-size:12px; line-height:1.45; }
+            #teacher-gradebook-table td:first-child > div { width:100%; gap:8px; }
+            .gradebook-student-name { font-size:14px; line-height:1.35; }
             #teacher-gradebook-table th:first-child > div { flex-wrap:wrap; gap:5px; }
             #teacher-gradebook-table input[type="number"] { width:44px; min-height:40px; font-size:16px; }
             #teacher-gradebook-table tbody td:not(:first-child) button { min-width:32px; min-height:36px; }
@@ -1979,7 +1980,7 @@
             let stickyThHTML = `
                 <th class="sticky left-0 top-0 z-40 px-3.5 py-3 min-w-[195px] sm:min-w-[245px] text-left border-r-[3px] border-b-[2.5px] border-[#0D530E] bg-[#E7E1B1] text-[#0D530E] font-black text-xs tracking-wider uppercase shadow-[3px_0_0_#0D530E]">
                     <div class="flex justify-between items-center">
-                        <span># / รูป / รายชื่อนักเรียน</span>
+                        <span>รายชื่อนักเรียน</span>
                         <span class="text-[10px] bg-[#306D29] text-[#FBF5DD] px-2 py-0.5 border border-[#0D530E]">${cls.students.length} คน</span>
                     </div>
                 </th>
@@ -2010,13 +2011,13 @@
             }
 
             stickyThHTML += `
-                <th class="px-1.5 py-2 w-14 text-center border-r-[2px] border-b-[2.5px] border-[#0D530E] bg-[#E7E1B1]"><div class="text-[10px] font-black text-[#0D530E]">รวมเก็บ</div></th>
-                <th class="px-1.5 py-2 w-14 text-center border-r-[1.5px] border-b-[2.5px] border-[#0D530E] bg-[#D4E6C3] text-[#0D530E]"><div class="text-[10px] font-black">จิตพิสัย</div><div class="text-[8px] font-bold text-[#306D29]">(10)</div></th>
-                <th class="px-1.5 py-2 w-14 text-center border-r-[1.5px] border-b-[2.5px] border-[#0D530E] bg-[#EFE2AA] text-[#0D530E]"><div class="text-[10px] font-black">กลางภาค</div><div class="text-[8px] font-bold text-[#306D29]">(20)</div></th>
-                <th class="px-1.5 py-2 w-14 text-center border-r-[2px] border-b-[2.5px] border-[#0D530E] bg-[#D4E6C3] text-[#0D530E]"><div class="text-[10px] font-black">ปลายภาค</div><div class="text-[8px] font-bold text-[#306D29]">(20)</div></th>
-                <th class="px-1.5 py-2 w-14 text-center border-r-[2px] border-b-[2.5px] border-[#0D530E] bg-[#E7E1B1]"><div class="text-[10px] font-black text-[#306D29]">ดาว 🌟</div></th>
-                <th class="px-2 py-2 w-16 text-center border-r-[2px] border-b-[2.5px] border-[#0D530E] font-black text-[#FBF5DD] text-xs bg-[#306D29] tracking-wider">รวม 100</th>
-                <th class="px-2 py-2 w-14 text-center border-r-[2px] border-b-[2.5px] border-[#0D530E] font-black text-[#FBF5DD] text-xs bg-[#0D530E] tracking-wider">เกรด</th>
+                <th class="px-1.5 py-2 w-14 text-center border-r-[2px] border-b-[2.5px] border-[#0D530E] bg-[#E7E1B1]"><span class="gradebook-summary-heading text-[#0D530E]">รวมเก็บ</span></th>
+                <th class="px-1.5 py-2 w-14 text-center border-r-[1.5px] border-b-[2.5px] border-[#0D530E] bg-[#D4E6C3] text-[#0D530E]"><span class="gradebook-summary-heading">จิตพิสัย (10)</span></th>
+                <th class="px-1.5 py-2 w-14 text-center border-r-[1.5px] border-b-[2.5px] border-[#0D530E] bg-[#EFE2AA] text-[#0D530E]"><span class="gradebook-summary-heading">กลางภาค (20)</span></th>
+                <th class="px-1.5 py-2 w-14 text-center border-r-[2px] border-b-[2.5px] border-[#0D530E] bg-[#D4E6C3] text-[#0D530E]"><span class="gradebook-summary-heading">ปลายภาค (20)</span></th>
+                <th class="px-1.5 py-2 w-14 text-center border-r-[2px] border-b-[2.5px] border-[#0D530E] bg-[#E7E1B1]"><span class="gradebook-summary-heading text-[#306D29]">ดาว 🌟</span></th>
+                <th class="px-2 py-2 w-16 text-center border-r-[2px] border-b-[2.5px] border-[#0D530E] font-black text-[#FBF5DD] text-xs bg-[#306D29] tracking-wider"><span class="gradebook-summary-heading">รวม 100</span></th>
+                <th class="px-2 py-2 w-14 text-center border-r-[2px] border-b-[2.5px] border-[#0D530E] font-black text-[#FBF5DD] text-xs bg-[#0D530E] tracking-wider"><span class="gradebook-summary-heading">เกรด</span></th>
                 <th class="px-1 py-2 w-11 text-center border-b-[2.5px] border-[#0D530E] bg-[#E7E1B1]"></th>
             `;
             headEl.innerHTML = stickyThHTML;
@@ -2024,19 +2025,12 @@
             let tbHTML = '';
             cls.students.sort((a, b) => a.no - b.no).forEach(std => {
                 const stat = calculateStudentScore(std, cls.assignments);
-                const avatar = getAvatar(std.name, std.avatar);
-                const fallbackSvg = generateSvgAvatar(std.name).replace(/"/g, '&quot;');
-
                 tbHTML += `
                 <tr class="transition-colors group bg-[#FBF5DD]">
                     <td class="sticky left-0 z-20 px-3 py-2 text-left border-r-[3px] border-b-[1.5px] border-[#0D530E] bg-[#FBF5DD] group-hover:bg-[#E7E1B1] shadow-[3px_0_0_#0D530E] min-w-[195px] sm:min-w-[245px]">
                         <div class="flex items-center gap-2.5">
                             <span class="w-6 h-6 bg-[#E7E1B1] text-[#0D530E] font-black text-[11px] flex items-center justify-center border-[1.5px] border-[#0D530E] shrink-0">${std.no}</span>
-                            <img src="${avatar}" data-fallback="${fallbackSvg}" onerror="this.onerror=null; this.src=this.getAttribute('data-fallback');" onclick="viewImage(this.src)" class="w-7 h-7 sm:w-8 sm:h-8 object-cover border-[1.5px] border-[#0D530E] flex-shrink-0 cursor-pointer bg-[#E7E1B1]">
-                            <div class="flex flex-col min-w-0">
-                                <div class="text-xs sm:text-sm font-extrabold text-[#0D530E] truncate max-w-[115px] sm:max-w-[155px]" title="${escapeHTML(std.name)}">${escapeHTML(std.name)}</div>
-                                <div class="text-[9px] font-bold text-[#306D29]">ID: ${escapeHTML(std.studentId)}</div>
-                            </div>
+                            <span class="gradebook-student-name text-[#0D530E]" title="${escapeHTML(std.name)}">${escapeHTML(std.name)}</span>
                         </div>
                     </td>
                 `;
