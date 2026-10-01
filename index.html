@@ -644,6 +644,8 @@
                     <p id="teacher-save-detail" class="mt-1">กรอกคะแนนแล้วแตะนอกช่อง ระบบจะบันทึกอัตโนมัติ</p>
                 </div>
                 <button id="teacher-save-retry" type="button" class="hidden" onclick="handleScoreSaveRetry()">ลองบันทึกอีกครั้ง</button>
+                <button id="teacher-save-backup" type="button" class="hidden" onclick="downloadFullBackupJSON()">ดาวน์โหลดสำเนาคะแนน</button>
+                <button id="teacher-legacy-backup" type="button" class="hidden" onclick="downloadLegacyPendingBackup()">ดาวน์โหลดคะแนนค้างรุ่นเก่า</button>
                 <button id="teacher-conflict-use-latest" type="button" class="hidden" onclick="useLatestSheetAfterConflict()">โหลดข้อมูลล่าสุด</button>
             </div>
                     </div>
@@ -1492,11 +1494,12 @@
             }
         }
 
-        let appData = null;
-        try {
-            appData = JSON.parse(localStorage.getItem('eduTrackData_v3'));
-        } catch (e) {}
-        if (!appData || !appData.classes) appData = { classes: [] };
+        // Scores are shown only after a successful server read.
+        let appData = { classes: [] };
+        let cloudLoadedAt = 0;
+        let cloudRevisionHash = null;
+        let legacyCacheReviewed = false;
+        let legacyPendingScorePayload = null;
 
         let adminAuthenticated = false;
         let teacherSessionToken = null;
@@ -2946,9 +2949,17 @@
             toggleBodyScroll();
         }
 
-        function searchStudent() {
+        async function searchStudent() {
             const sid = document.getElementById('search-std-id').value.trim();
             if (!/^[0-9]{5}$/.test(sid)) return showStudentCodeError('⚠️ กรุณากรอกรหัสนักเรียนเป็นตัวเลข 5 หลัก');
+            // A lookup must use a recent online snapshot, especially on mobile.
+            if (!cloudLoadedAt || Date.now() - cloudLoadedAt > 15000) {
+                document.activeElement.blur();
+                clearStudentCodeError();
+                if (!await loadDataFromCloud()) {
+                    return showStudentCodeError('โหลดคะแนนออนไลน์ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง');
+                }
+            }
             performStudentLogin(sid);
         }
 
@@ -2999,14 +3010,7 @@
                 : missing.length ? 'ติดตามส่ง: ' + missing.slice(0, 3).map(task => task.name).join(' • ') +
                     (missing.length > 3 ? ' และอีก ' + (missing.length - 3) + ' งาน' : '') : 'ส่งงานครบแล้ว ✓';
             const storageKey = 'eduTrackScoreView:' + encodeURIComponent(cls.id) + ':' + encodeURIComponent(std.id);
-            if (!studentVisitBaselines.has(storageKey)) {
-                let previous = null;
-                try {
-                    const parsed = JSON.parse(localStorage.getItem(storageKey));
-                    if (Array.isArray(parsed)) previous = parsed;
-                } catch (_) {}
-                studentVisitBaselines.set(storageKey, previous);
-            }
+            if (!studentVisitBaselines.has(storageKey)) studentVisitBaselines.set(storageKey, null);
             const previous = studentVisitBaselines.get(storageKey);
             const current = studentScoreSnapshot(std, cls);
             const before = new Map((previous || []).filter(item => item && typeof item.key === 'string').map(item => [item.key, item.value]));
@@ -3032,7 +3036,7 @@
                 row.textContent = previous ? 'คะแนนยังเหมือนครั้งก่อนที่ดู' : 'เข้าดูครั้งแรก — ครั้งถัดไปจะแสดงคะแนนที่เปลี่ยนตรงนี้';
                 list.appendChild(row);
             }
-            try { localStorage.setItem(storageKey, JSON.stringify(current)); } catch (_) {}
+            studentVisitBaselines.set(storageKey, current);
             const updated = new Date(appData.lastUpdated);
             document.getElementById('res-data-updated').textContent = Number.isFinite(updated.getTime())
                 ? 'ข้อมูลระบบอัปเดต: ' + updated.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
@@ -3373,6 +3377,9 @@
                                     throw new Error(result.message || 'รหัสผ่านไม่ถูกต้อง');
                                 }
                                 teacherSessionToken = result.token;
+                                if (!cloudLoadedAt && !await loadDataFromCloud()) {
+                                    throw new Error('โหลดข้อมูลคะแนนออนไลน์ไม่สำเร็จ กรุณาลองอีกครั้ง');
+                                }
                                 adminAuthenticated = true;
                                 switchView('teacher');
                             } finally {
@@ -4666,7 +4673,6 @@ JSON Structure:
 
                     appData.classes = loadedClasses;
                     appData.lastUpdated = Date.now();
-                    localStorage.setItem('eduTrackData_v3', JSON.stringify(appData));
 
                     if (cloudIndicator) {
                         cloudIndicator.innerHTML = `<span class="text-[#3B741D] font-black text-xl drop-shadow-[1px_1px_0px_#0D0A0B]">🟢</span> <span class="hidden md:inline text-[#3B741D] font-black uppercase">SUPABASE ONLINE 100%</span>`;
@@ -4741,34 +4747,6 @@ JSON Structure:
         let pendingSheetPayload = null;
         let lastScoreSaveIssue = '';
         let lastScoreSaveCode = '';
-        const SHEET_SYNC_STORAGE_KEY = 'eduTrackSheetSync_v1';
-
-        function persistSheetSyncState() {
-            try {
-                localStorage.setItem(SHEET_SYNC_STORAGE_KEY, JSON.stringify({
-                    endpoint: GAS_URL, confirmed: confirmedSheetPayload, pending: pendingSheetPayload
-                }));
-            } catch (error) { console.error('Could not preserve Sheet sync state:', error); }
-        }
-
-        function restoreSheetSyncState() {
-            try {
-                const saved = JSON.parse(localStorage.getItem(SHEET_SYNC_STORAGE_KEY));
-                if (!saved || saved.endpoint !== GAS_URL) return;
-                if (saved.confirmed && Array.isArray(JSON.parse(saved.confirmed).classes)) {
-                    confirmedSheetPayload = saved.confirmed;
-                    if (!saved.pending) appData = JSON.parse(saved.confirmed);
-                }
-                if (saved.pending && Array.isArray(JSON.parse(saved.pending).classes)) {
-                    pendingSheetPayload = saved.pending;
-                    appData = JSON.parse(saved.pending);
-                    hasUnsavedCloudChanges = true;
-                    renderScoreSaveStatus('error');
-                    document.getElementById('teacher-save-detail').textContent =
-                        'เก็บคะแนนที่ยังยืนยันไม่ได้จากครั้งก่อนในเครื่องแล้ว กรุณาลองบันทึกอีกครั้ง';
-                }
-            } catch (error) { console.error('Could not restore Sheet sync state:', error); }
-        }
 
         async function reconcilePendingSheetState() {
             if (!pendingSheetPayload) return false;
@@ -4789,7 +4767,6 @@ JSON Structure:
                 confirmedSheetPayload = expectedPayload;
                 pendingSheetPayload = null;
                 hasUnsavedCloudChanges = false;
-                persistSheetSyncState();
                 renderScoreSaveStatus('saved', Date.now());
                 return true;
             } catch (error) {
@@ -4798,6 +4775,26 @@ JSON Structure:
             } finally {
                 clearTimeout(timer);
             }
+        }
+
+        function clearLegacyScoreCache(serverPayload) {
+            if (legacyCacheReviewed) return;
+            legacyCacheReviewed = true;
+            try {
+                const sync = JSON.parse(localStorage.getItem('eduTrackSheetSync_v1') || 'null');
+                // Keep a divergent, unconfirmed legacy edit available for manual recovery.
+                if (sync && sync.pending && sync.pending !== serverPayload) {
+                    legacyPendingScorePayload = sync.pending;
+                    document.getElementById('teacher-legacy-backup')?.classList.remove('hidden');
+                    return;
+                }
+                localStorage.removeItem('eduTrackData_v3');
+                localStorage.removeItem('eduTrackSheetSync_v1');
+                for (let i = localStorage.length - 1; i >= 0; i--) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith('eduTrackScoreView:')) localStorage.removeItem(key);
+                }
+            } catch (error) { console.warn('Could not clear an old score cache:', error); }
         }
 
         function rejectRegressedSheetData(cloudData) {
@@ -4809,15 +4806,10 @@ JSON Structure:
                 (previousTime > 0 && previousTime === incomingTime &&
                     JSON.stringify(cloudData) !== confirmedSheetPayload);
             if (!regressed) return false;
-            // Preserve the verified data, but clearly report that Sheet no longer agrees.
-            pendingSheetPayload = JSON.stringify(appData);
-            hasUnsavedCloudChanges = true;
-            persistSheetSyncState();
-            renderScoreSaveStatus('error');
-            document.getElementById('teacher-save-detail').textContent =
-                'ข้อมูลที่อ่านจาก Sheet ย้อนกลับเป็นชุดเก่า เก็บคะแนนล่าสุดในเครื่องไว้แล้ว กรุณาตรวจสอบก่อนลองบันทึกอีกครั้ง';
+            // A delayed read may return an older Sheet revision. Keep the last
+            // server-confirmed snapshot in memory and retry on the next refresh.
             renderCloudRefreshStatus('error',
-                'ข้อมูลจาก Sheet เก่ากว่าหรือไม่ตรงกับชุดที่ยืนยันล่าสุด จึงยังไม่โหลดทับคะแนนในเครื่อง');
+                'ข้อมูลจาก Sheet เก่ากว่าชุดที่ยืนยันล่าสุด กำลังรอข้อมูลใหม่');
             return true;
         }
 
@@ -4841,6 +4833,8 @@ JSON Structure:
                 : state === 'saved'
                     ? 'บันทึกล่าสุด ' + new Date(savedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
                     : lastScoreSaveIssue || 'ตรวจสอบอินเทอร์เน็ต แล้วกดลองบันทึกอีกครั้งก่อนปิดหน้านี้';
+            const backup = document.getElementById('teacher-save-backup');
+            if (backup) backup.classList.toggle('hidden', state !== 'error');
             if (retry) {
                 retry.classList.toggle('hidden', state !== 'error');
                 retry.textContent = lastScoreSaveCode === 'CONFLICT'
@@ -4878,9 +4872,9 @@ JSON Structure:
                     secureBackendAvailable = true;
                     return true;
                 }
-                lastScoreSaveIssue = 'กรุณาอัปเดต Apps Script เป็นรุ่นตรวจสิทธิ์และกันข้อมูลทับ แล้ว Deploy เวอร์ชันใหม่ คะแนนที่แก้ไขยังเก็บอยู่ในเครื่อง';
+                lastScoreSaveIssue = 'กรุณาอัปเดต Apps Script เป็นรุ่นตรวจสิทธิ์และกันข้อมูลทับ แล้ว Deploy เวอร์ชันใหม่ คะแนนที่แก้ไขยังอยู่ในหน้านี้ กรุณาลองบันทึกหรือดาวน์โหลดสำเนาก่อนปิดหน้า';
             } catch (_) {
-                lastScoreSaveIssue = 'เชื่อมต่อเพื่อตรวจสอบระบบจัดเก็บไม่ได้ กรุณาตรวจอินเทอร์เน็ตแล้วลองบันทึกอีกครั้ง คะแนนที่แก้ไขยังเก็บอยู่ในเครื่อง';
+                lastScoreSaveIssue = 'เชื่อมต่อเพื่อตรวจสอบระบบจัดเก็บไม่ได้ กรุณาตรวจอินเทอร์เน็ตแล้วลองบันทึกอีกครั้ง คะแนนที่แก้ไขยังอยู่ในหน้านี้ กรุณาลองบันทึกหรือดาวน์โหลดสำเนาก่อนปิดหน้า';
             } finally {
                 clearTimeout(timer);
             }
@@ -4900,7 +4894,7 @@ JSON Structure:
             const expectedHash = scorePayloadHash(snapshot.payload);
             if (!await checkSheetStorageCapacity(snapshot.payload)) return false;
             if (!teacherSessionToken) {
-                lastScoreSaveIssue = 'กรุณาเข้าระบบครูอีกครั้ง แล้วกดลองบันทึก คะแนนที่แก้ไขยังเก็บอยู่ในเครื่อง';
+                lastScoreSaveIssue = 'กรุณาเข้าระบบครูอีกครั้ง แล้วกดลองบันทึก คะแนนที่แก้ไขยังอยู่ในหน้านี้ กรุณาลองบันทึกหรือดาวน์โหลดสำเนาก่อนปิดหน้า';
                 return false;
             }
             return new Promise(resolve => {
@@ -5009,7 +5003,7 @@ JSON Structure:
                         if (['CONFLICT', 'AUTH_REQUIRED', 'INVALID_DATA', 'BUSY'].includes(error.sheetCode)) {
                             if (error.sheetCode === 'AUTH_REQUIRED') teacherSessionToken = null;
                             lastScoreSaveCode = error.sheetCode;
-                            lastScoreSaveIssue = 'บันทึกไม่สำเร็จ: ' + error.sheetMessage + ' • คะแนนที่แก้ไขยังเก็บอยู่ในเครื่อง';
+                            lastScoreSaveIssue = 'บันทึกไม่สำเร็จ: ' + error.sheetMessage + ' • คะแนนที่แก้ไขยังอยู่ในหน้านี้ กรุณาลองบันทึกหรือดาวน์โหลดสำเนาก่อนปิดหน้า';
                             finish(false);
                             return;
                         }
@@ -5019,7 +5013,7 @@ JSON Structure:
                             if (error.sheetCode === 'AUTH_REQUIRED') teacherSessionToken = null;
                             if (error.sheetCode) lastScoreSaveCode = error.sheetCode;
                             lastScoreSaveIssue = error.sheetMessage
-                                ? 'บันทึกไม่สำเร็จ: ' + error.sheetMessage + ' • คะแนนที่แก้ไขยังเก็บอยู่ในเครื่อง'
+                                ? 'บันทึกไม่สำเร็จ: ' + error.sheetMessage + ' • คะแนนที่แก้ไขยังอยู่ในหน้านี้ กรุณาลองบันทึกหรือดาวน์โหลดสำเนาก่อนปิดหน้า'
                                 : 'ยังตรวจไม่พบคะแนนล่าสุดใน Google Sheet กรุณาตรวจอินเทอร์เน็ตแล้วลองบันทึกอีกครั้ง';
                             console.error('Google Sheet save unconfirmed:', error);
                         }
@@ -5062,7 +5056,10 @@ JSON Structure:
                         if (saved) pendingSheetPayload = null;
                         renderScoreSaveStatus(saved ? 'saved' : 'error', Date.now());
                     }
-                    persistSheetSyncState();
+                    if (saved) {
+                        cloudLoadedAt = Date.now();
+                        cloudRevisionHash = await scorePayloadHash(snapshot.payload);
+                    }
                     const completed = scoreSaveWaiters.filter(item => item.revision <= snapshot.revision);
                     scoreSaveWaiters = scoreSaveWaiters.filter(item => item.revision > snapshot.revision);
                     completed.forEach(item => item.resolve(saved));
@@ -5089,8 +5086,8 @@ JSON Structure:
             }
             appData = result.data;
             confirmedSheetPayload = JSON.stringify(appData);
-            persistSheetSyncState();
-            try { localStorage.setItem('eduTrackData_v3', confirmedSheetPayload); } catch (_) {}
+            cloudLoadedAt = Date.now();
+            cloudRevisionHash = await scorePayloadHash(confirmedSheetPayload);
             return result;
         }
 
@@ -5116,7 +5113,6 @@ JSON Structure:
                     lastScoreSaveCode = '';
                     lastScoreSaveIssue = '';
                     confirmedSheetPayload = null;
-                    persistSheetSyncState();
                     loadDataFromCloud();
                 }
             });
@@ -5130,9 +5126,6 @@ JSON Structure:
             appData.lastUpdated = Math.max(Date.now(), (Number(appData.lastUpdated) || 0) + 1);
             const payload = JSON.stringify(appData);
             pendingSheetPayload = payload;
-            persistSheetSyncState();
-            try { localStorage.setItem('eduTrackData_v3', payload); }
-            catch (error) { console.error('Local save failed:', error); }
             queuedScoreSnapshot = { revision, payload };
             updatePendingScoreSaves();
             renderScoreSaveStatus('saving');
@@ -5191,7 +5184,7 @@ JSON Structure:
         function scheduleCloudRefresh() {
             clearTimeout(cloudRefreshTimer);
             cloudRefreshTimer = setTimeout(() => {
-                if (cloudRefreshRequested && document.visibilityState === 'visible') loadDataFromCloud();
+                if (cloudRefreshRequested && document.visibilityState === 'visible') loadDataFromCloud(true);
             }, 300);
         }
 
@@ -5200,7 +5193,7 @@ JSON Structure:
             scheduleCloudRefresh();
         }
 
-        function loadDataFromCloud() {
+        function loadDataFromCloud(checkRevision = false) {
             // Share one in-flight read; never let an older read overwrite a new edit.
             if (cloudLoadPromise) return cloudLoadPromise;
             const blocked = cloudRefreshBlockReason();
@@ -5220,16 +5213,34 @@ JSON Structure:
                     if (!GAS_URL) throw new Error('Missing Google Sheet connection');
                     const url = new URL(GAS_URL);
                     url.searchParams.set('_refresh', Date.now().toString());
-                    const response = await fetch(url.toString(), {
+                    if (checkRevision && cloudRevisionHash) url.searchParams.set('action', 'revision');
+                    let response = await fetch(url.toString(), {
                         method: 'GET', redirect: 'follow', cache: 'no-store', signal: controller.signal
                     });
                     if (!response.ok) throw new Error('Load HTTP error');
-                    const cloudData = await response.json();
+                    let cloudData = await response.json();
+                    if (checkRevision && cloudRevisionHash && cloudData.success === true &&
+                        cloudData.storageFormat === 'EDUTRACK_CHUNKS_V1' && cloudData.sha256) {
+                        if (cloudData.sha256 === cloudRevisionHash) {
+                            cloudLoadedAt = Date.now();
+                            renderCloudRefreshStatus('loaded', 'ข้อมูลออนไลน์ยังเป็นรุ่นล่าสุด');
+                            return true;
+                        }
+                        url.searchParams.delete('action');
+                        url.searchParams.set('_refresh', Date.now().toString());
+                        response = await fetch(url.toString(), {
+                            method: 'GET', redirect: 'follow', cache: 'no-store', signal: controller.signal
+                        });
+                        if (!response.ok) throw new Error('Load HTTP error');
+                        cloudData = await response.json();
+                    }
                     if (!cloudData || !Array.isArray(cloudData.classes) ||
                         !cloudData.classes.every(c => c && typeof c.id === 'string' &&
                             typeof c.name === 'string' && Array.isArray(c.students) && Array.isArray(c.assignments))) {
                         throw new Error('Invalid structure');
                     }
+                    const loadedPayload = JSON.stringify(cloudData);
+                    const loadedHash = await scorePayloadHash(loadedPayload);
                     const blockedNow = cloudRefreshBlockReason();
                     if (blockedNow || saveRevision !== latestScoreSave || editRevision !== cloudEditRevision) {
                         cloudRefreshRequested = true;
@@ -5237,15 +5248,16 @@ JSON Structure:
                         return false;
                     }
                     if (rejectRegressedSheetData(cloudData)) return false;
-                    const loadedPayload = JSON.stringify(cloudData);
                     const changed = loadedPayload !== confirmedSheetPayload;
                     appData = cloudData;
                     confirmedSheetPayload = loadedPayload;
-                    persistSheetSyncState();
-                    try { localStorage.setItem('eduTrackData_v3', JSON.stringify(appData)); }
-                    catch (error) { console.error('Local cache unavailable:', error); }
+                    cloudLoadedAt = Date.now();
+                    cloudRevisionHash = loadedHash;
+                    clearLegacyScoreCache(loadedPayload);
                     if (changed) refreshGoogleSheetViews();
-                    renderCloudRefreshStatus('loaded', 'โหลดข้อมูลล่าสุดแล้ว');
+                    renderCloudRefreshStatus('loaded', legacyPendingScorePayload
+                        ? 'โหลดข้อมูลออนไลน์แล้ว • พบคะแนนค้างรุ่นเก่าในเครื่องนี้ โปรดดาวน์โหลดสำเนาและตรวจเทียบ'
+                        : 'โหลดข้อมูลล่าสุดแล้ว');
                     document.getElementById('cloud-refresh-time').textContent =
                         'โหลดสำเร็จเมื่อ ' + new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'medium' });
                     const indicator = document.getElementById('cloud-status');
@@ -5253,7 +5265,9 @@ JSON Structure:
                     return true;
                 } catch (error) {
                     console.error('Google Sheet load failed:', error);
-                    renderCloudRefreshStatus('error', 'โหลดไม่สำเร็จ กำลังแสดงข้อมูลเดิม — ตรวจอินเทอร์เน็ตแล้วกดโหลดอีกครั้ง');
+                    renderCloudRefreshStatus('error', cloudLoadedAt
+                        ? 'โหลดไม่สำเร็จ ข้อมูลที่เห็นเป็นข้อมูลออนไลน์ครั้งก่อน — กรุณาลองโหลดอีกครั้ง'
+                        : 'โหลดคะแนนออนไลน์ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง');
                     const indicator = document.getElementById('cloud-status');
                     if (indicator && !hasUnsavedCloudChanges) indicator.textContent = '☁️ โหลดไม่สำเร็จ';
                     return false;
@@ -5264,6 +5278,16 @@ JSON Structure:
                 }
             })();
             return cloudLoadPromise;
+        }
+
+        function downloadLegacyPendingBackup() {
+            if (!legacyPendingScorePayload) return;
+            const anchor = document.createElement('a');
+            anchor.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(legacyPendingScorePayload);
+            anchor.download = 'HSEduTrack_LEGACY_UNCONFIRMED_' + new Date().toISOString().slice(0, 10) + '.json';
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
         }
 
         function downloadFullBackupJSON() {
@@ -5278,17 +5302,8 @@ JSON Structure:
 
         // Initialize once; returning to this page triggers a fresh Sheet read.
         async function initializeCloudData() {
-            restoreSheetSyncState();
             initSupabaseClient(); // Show which database this installation uses; no second sync engine.
-            const loadInitialData = async () => {
-                if (pendingSheetPayload) await reconcilePendingSheetState();
-                return loadDataFromCloud();
-            };
-            if (!appData.classes.length) {
-                await runWithLoading('กำลังโหลดข้อมูลคะแนน', loadInitialData, 100);
-            } else {
-                await loadInitialData();
-            }
+            await runWithLoading('กำลังโหลดข้อมูลคะแนน', loadDataFromCloud, 100);
         }
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initializeCloudData, { once: true });
@@ -5299,6 +5314,10 @@ JSON Structure:
             if (document.visibilityState === 'visible') requestLatestCloudData();
         });
         window.addEventListener('focus', requestLatestCloudData);
+        // Google Sheet has no push subscription. Refresh visible tabs regularly.
+        setInterval(() => {
+            if (document.visibilityState === 'visible') requestLatestCloudData();
+        }, 30000);
         window.addEventListener('pageshow', event => {
             if (event.persisted) requestLatestCloudData();
         });
