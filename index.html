@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="th" class="light">
+<html lang="th" class="light" data-hs-motion="full">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>HongSon EduTrack | ตรวจสอบคะแนนนักเรียน</title>
     <link rel="stylesheet" href="assets/app.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -194,9 +194,49 @@
         .student-score-breakdown > div > div:first-child { font-size:12px; line-height:1.4; }
         .student-activity-link { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; padding:13px 16px; border:2px solid #0D0A0B; background:#F3EFF5; color:#0D0A0B; font-size:13px; font-weight:800; text-align:left; cursor:pointer; }
         .student-activity-link:hover { background:#D8D6DE; }
+        /* Compact student identity and a square grade card. */
+        .student-profile-body { flex-direction:row; align-items:center; }
+        .student-profile-identity { flex:1; min-width:0; }
+        .student-profile-name { flex:1; min-width:0; }
+        .student-profile-label { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:4px; }
+        .student-profile-label .workspace-eyebrow { margin-bottom:0; }
+        .student-avatar-edit { position:static; flex-shrink:0; width:36px; height:36px; }
+        #res-grade-card { width:88px; height:88px; min-height:88px; flex-shrink:0; padding:8px; gap:5px; box-shadow:2px 2px 0 #0D0A0B; }
+        #res-grade-card > span { letter-spacing:0; line-height:1.4; }
+        .student-task-status { width:fit-content; max-width:100%; }
+        /* Student overview and gradebook tools: presentation only. */
+        .student-next-step { margin:14px 0; padding:12px 14px; border-left:5px solid #3F7D20; background:#F3EFF5; font-size:13px; line-height:1.6; }
+        .student-next-step strong { display:block; font-weight:900; }
+        .student-task-filters { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+        .student-task-filters button { min-height:40px; padding:7px 12px; border:2px solid #454955; background:#F3EFF5; font-weight:800; font-size:12px; cursor:pointer; }
+        .student-task-filters button[aria-pressed="true"] { background:#3F7D20; color:#F3EFF5; box-shadow:2px 2px 0 #0D0A0B; }
+        .student-quick-card { cursor:pointer; color:#0D0A0B; }
+        .student-quick-card:focus-visible, .student-task-filters button:focus-visible { outline:3px solid #72B01D; outline-offset:3px; }
+        .task-summary-caption { font-size:12px; color:#454955; margin:8px 0; line-height:1.6; }
+        .student-task-row { display:flex; justify-content:space-between; align-items:center; gap:14px; padding:15px; border:2px solid #454955; background:#F3EFF5; box-shadow:2px 2px 0 #0D0A0B; }
+        .student-task-row[data-status="missing"] { background:#F5DCD6; border-color:#7F2B1D; }
+        .student-task-row[data-status="pending"] { background:#E9E4D8; }
+        .student-task-row[data-status="graded"] { background:#E2ECD7; }
+        .student-task-title { font-weight:900; font-size:15px; overflow-wrap:anywhere; }
+        .student-task-detail { margin-top:4px; font-size:12px; color:#454955; }
+        .student-task-score { flex-shrink:0; font-size:22px; font-weight:900; color:#3F7D20; white-space:nowrap; }
+        .student-task-score small { font-size:12px; color:#454955; }
+        .student-task-status { display:block; font-size:12px; font-weight:800; margin-bottom:4px; }
+        .student-task-status[data-status="missing"] { color:#7F2B1D; }
+        .gradebook-toolbar { display:grid; grid-template-columns:minmax(180px,1.4fr) minmax(150px,1fr) minmax(150px,1fr) auto; align-items:end; gap:12px; padding:16px; border-bottom:2px solid #454955; background:#F3EFF5; }
+        .gradebook-toolbar label { display:block; font-size:12px; font-weight:800; margin-bottom:5px; }
+        .gradebook-toolbar input, .gradebook-toolbar select { width:100%; min-height:44px; border:2px solid #454955; background:#fff; color:#0D0A0B; padding:8px 10px; font:inherit; font-size:14px; }
+        .gradebook-toolbar input:focus, .gradebook-toolbar select:focus { outline:3px solid #72B01D; outline-offset:1px; }
+        .gradebook-toolbar button { min-height:44px; padding:8px 12px; border:2px solid #454955; font-weight:800; font-size:12px; background:#D8D6DE; cursor:pointer; }
+        .gradebook-filter-info { padding:9px 16px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:7px; font-size:12px; line-height:1.6; border-bottom:1px solid #454955; }
+        .gradebook-empty { padding:20px; text-align:center; font-size:14px; background:#F3EFF5; }
+        #admin-table-body tr[hidden], .student-task-row[hidden] { display:none; }
+        @media(max-width:900px) { .gradebook-toolbar { grid-template-columns:repeat(2,minmax(0,1fr)); } .gradebook-toolbar > div:first-child { grid-column:1/-1; } }
+        @media(max-width:639px) { .student-task-row { align-items:flex-start; flex-direction:column; gap:10px; } .student-task-score { align-self:flex-end; } .gradebook-toolbar { padding:12px; gap:10px; } .gradebook-toolbar button { grid-column:1/-1; } .gradebook-toolbar input, .gradebook-toolbar select { font-size:16px; } }
         /* Score summary and comfortable grade entry on phones. */
-        .student-quick-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:12px; }
+        .student-quick-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:12px; }
         .student-quick-card { padding:14px; border:2px solid #0D0A0B; background:#D8D6DE; text-align:left; min-height:98px; }
+        @media(max-width:420px) { .student-quick-grid { gap:7px; } .student-quick-card { padding:10px 8px; min-height:95px; } .student-quick-card > span:first-child { display:block; font-size:11px; min-height:32px; } .student-quick-card > span:last-child { display:none; } }
         .student-quick-card strong { display:block; font-size:24px; line-height:1.3; }
         .student-quick-card[data-attention="true"] { background:#F5DCD6; border-color:#7F2B1D; color:#6E1E12; }
         .student-update-box { padding:14px 16px; border:2px solid #0D0A0B; background:#D8D6DE; font-size:12px; }
@@ -226,7 +266,7 @@
         .cloud-refresh-indicator:hover .cloud-refresh-details,
         .cloud-refresh-indicator:focus-within .cloud-refresh-details { opacity:1; pointer-events:auto; transform:translateY(0); }
         .save-feedback button { min-height:36px; padding:6px 10px; border:2px solid currentColor; font-weight:800; background:#F3EFF5; cursor:pointer; }
-        #teacher-gradebook-scroll { overscroll-behavior-x:contain; scroll-padding-left:260px; -webkit-overflow-scrolling:touch; }
+        #teacher-gradebook-scroll { scroll-padding-top:185px; overscroll-behavior-x:contain; scroll-padding-left:260px; -webkit-overflow-scrolling:touch; }
         #teacher-gradebook-table th:first-child, #teacher-gradebook-table td:first-child { width:260px; min-width:260px; max-width:260px; }
         .gradebook-student-name { display:block; min-width:0; font-size:16px; line-height:1.4; font-weight:800; overflow-wrap:anywhere; }
         .gradebook-summary-heading { display:inline-block; writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; font-size:12px; font-weight:900; line-height:1.2; }
@@ -315,6 +355,12 @@
             .student-code-field::after { animation-duration:1.2s; }
         }
     </style>
+    <link rel="stylesheet" href="assets/mobile.css">
+    <link rel="stylesheet" href="assets/icons.css?v=20261001-3">
+    <link rel="stylesheet" href="assets/motion.css?v=20261001-3">
+    <script src="assets/motion.js?v=20261001-3" defer></script>
+    <link rel="stylesheet" href="assets/motion-extras.css?v=20261001-1">
+    <script src="assets/motion-extras.js?v=20261001-1" defer></script>
 </head>
 <body class="antialiased min-h-screen flex flex-col relative z-0 bg-[#F3EFF5] text-[#0D0A0B]">
 
@@ -322,15 +368,85 @@
         <symbol id="hs-brand-spark" viewBox="0 0 216 216">
             <path d="M96 12h24v61l43-43 17 17-43 43h61v24h-61l43 43-17 17-43-43v61H96v-61l-43 43-17-17 43-43H12V90h61L30 47l17-17 43 43V12z" />
         </symbol>
+        <symbol id="hs-icon-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" /></symbol>
+        <!-- Lucide refresh-cw (ISC); source and license: assets/icons/ -->
+        <symbol id="hs-icon-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></symbol>
+        <symbol id="hs-icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" />
+  <path d="M12 6v6l4 2" /></symbol>
+        <symbol id="hs-icon-spinner" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></symbol>
+        <symbol id="hs-icon-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></symbol>
+        <symbol id="hs-icon-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+  <path d="M12 9v4" />
+  <path d="M12 17h.01" /></symbol>
+        <symbol id="hs-icon-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+  <path d="m15 5 4 4" /></symbol>
+        <symbol id="hs-icon-plus" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
+  <path d="M14 2v5a1 1 0 0 0 1 1h5" />
+  <path d="M9 15h6" />
+  <path d="M12 18v-6" /></symbol>
+        <symbol id="hs-icon-scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2" />
+  <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+  <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+  <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+  <path d="M7 12h10" /></symbol>
+        <symbol id="hs-icon-exit" viewBox="0 0 24 24"><path d="m16 17 5-5-5-5" />
+  <path d="M21 12H9" />
+  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /></symbol>
+        <symbol id="hs-icon-tools" viewBox="0 0 24 24"><path d="M10 5H3" />
+  <path d="M12 19H3" />
+  <path d="M14 3v4" />
+  <path d="M16 17v4" />
+  <path d="M21 12h-9" />
+  <path d="M21 19h-5" />
+  <path d="M21 5h-7" />
+  <path d="M8 10v4" />
+  <path d="M8 12H3" /></symbol>
+        <symbol id="hs-icon-dice" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+  <path d="M16 8h.01" />
+  <path d="M8 8h.01" />
+  <path d="M8 16h.01" />
+  <path d="M16 16h.01" />
+  <path d="M12 12h.01" /></symbol>
+        <symbol id="hs-icon-star" viewBox="0 0 24 24"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" /></symbol>
+        <symbol id="hs-icon-card" viewBox="0 0 24 24"><path d="M13 19a4 4 0 00-8 0" />
+  <path d="M16 10h2" />
+  <path d="M16 14h2" />
+  <circle cx="9" cy="12" r="3" />
+  <rect x="2" y="5" width="20" height="14" rx="2" /></symbol>
+        <symbol id="hs-icon-download" viewBox="0 0 24 24"><path d="M12 15V3" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <path d="m7 10 5 5 5-5" /></symbol>
+        <symbol id="hs-icon-clipboard" viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+  <path d="m9 14 2 2 4-4" /></symbol>
+        <symbol id="hs-icon-controller" viewBox="0 0 24 24"><line x1="6" x2="10" y1="11" y2="11" />
+  <line x1="8" x2="8" y1="9" y2="13" />
+  <line x1="15" x2="15.01" y1="12" y2="12" />
+  <line x1="18" x2="18.01" y1="10" y2="10" />
+  <path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z" /></symbol>
+        <symbol id="hs-icon-arrow" viewBox="0 0 24 24"><path d="M5 12h14" />
+  <path d="m12 5 7 7-7 7" /></symbol>
+        <symbol id="hs-icon-graduate" viewBox="0 0 24 24"><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z" />
+  <path d="M22 10v6" />
+  <path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5" /></symbol>
+        <symbol id="hs-icon-chart" viewBox="0 0 24 24"><path d="M5 18v-5M12 18V5M19 18V9M3 21h18"/></symbol>
+        <symbol id="hs-icon-book" viewBox="0 0 24 24"><path d="M12 5v16" />
+  <path d="M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z" /></symbol>
+        <symbol id="hs-icon-sparkles" viewBox="0 0 24 24"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
+  <path d="M20 2v4" />
+  <path d="M22 4h-4" />
+  <circle cx="4" cy="20" r="2" /></symbol>
+        <symbol id="hs-icon-board" viewBox="0 0 24 24"><path d="M3 4h18v12H3zM7 21l3-5M17 21l-3-5M12 16v5M7 8h5M7 11h9"/></symbol>
     </svg>
 
     <!-- 🌿 MINIMAL NEO-BRUTALIST STUDIO HEADER -->
-    <nav class="bg-[#F3EFF5] border-b-[2.5px] border-[#454955] sticky top-0 z-40">
+    <nav id="app-header" class="bg-[#F3EFF5] border-b-[2.5px] border-[#454955] sticky top-0 z-40">
         <div class="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between items-center h-16 sm:h-20 gap-3">
+            <div class="header-content flex justify-between items-center h-16 sm:h-20 gap-3">
                 <!-- Left Brand & Cloud Status -->
-                <div class="flex items-center gap-3 min-w-0">
-                    <div class="w-10 h-10 sm:w-11 sm:h-11 bg-[#D8D6DE] border-[2.5px] border-[#454955] shadow-[3px_3px_0px_#0D0A0B] flex items-center justify-center overflow-hidden shrink-0">
+                <div class="app-brand flex items-center gap-3 min-w-0">
+                    <div class="brand-logo-frame w-10 h-10 sm:w-11 sm:h-11 bg-[#D8D6DE] border-[2.5px] border-[#454955] shadow-[3px_3px_0px_#0D0A0B] flex items-center justify-center overflow-hidden shrink-0">
                         <img src="https://upload.wikimedia.org/wikipedia/commons/4/4d/Hs_logo_mid.png" alt="โลโก้ HongSon EduTrack" class="w-7 h-7 object-contain">
                     </div>
                     <div class="flex flex-col">
@@ -339,8 +455,8 @@
                             <span class="hidden sm:inline text-[10px] font-bold text-[#3B741D] tracking-widest uppercase">ติดตามงานและผลการเรียน</span>
                         </div>
                         <div class="flex items-baseline gap-1 select-none">
-                            <span class="text-lg sm:text-2xl font-black text-[#0D0A0B] tracking-tight uppercase">HONGSON</span>
-                            <span class="text-lg sm:text-2xl font-black text-[#3B741D] tracking-tight uppercase">EDUTRACK</span><svg class="brand-spark brand-spark--nav" aria-hidden="true"><use href="#hs-brand-spark"></use></svg>
+                            <span class="brand-word text-lg sm:text-2xl font-black text-[#0D0A0B] tracking-tight uppercase">HONGSON</span>
+                            <span class="brand-word text-lg sm:text-2xl font-black text-[#3B741D] tracking-tight uppercase">EDUTRACK</span><svg class="brand-spark brand-spark--nav" aria-hidden="true"><use href="#hs-brand-spark"></use></svg>
                         </div>
                     </div>
 
@@ -349,7 +465,7 @@
                     </div>
                 <section id="cloud-refresh-panel" class="cloud-refresh-indicator" data-state="idle" aria-label="สถานะข้อมูลล่าสุดจาก Google Sheet">
                     <button id="cloud-refresh-button" type="button" onclick="refreshDataWithLoading()" aria-label="โหลดข้อมูลล่าสุด" title="โหลดข้อมูลล่าสุด">
-                        <span aria-hidden="true">↻</span><span class="cloud-refresh-dot" aria-hidden="true"></span>
+                        <span aria-hidden="true"><svg class="ui-icon icon-refresh refresh-indicator-turn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-refresh"></use></svg><svg class="ui-icon icon-clock refresh-indicator-wait" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-clock"></use></svg></span><span class="cloud-refresh-dot" aria-hidden="true"></span>
                     </button>
                     <div class="cloud-refresh-details" role="status" aria-live="polite" aria-atomic="true">
                         <strong id="cloud-refresh-message">พร้อมโหลดข้อมูลจาก Google Sheet</strong>
@@ -363,21 +479,21 @@
                 <!-- Right Segmented Navigation Dock -->
                 <div class="hidden md:flex items-center bg-[#D8D6DE] p-1 border-[2px] border-[#454955] shadow-[3px_3px_0px_#0D0A0B] gap-1 shrink-0">
                     <button onclick="switchView('student')" id="btn-nav-student" class="px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-extrabold bg-[#72B01D] text-[#0D0A0B] border-[2px] border-[#454955] shadow-[2px_2px_0px_#0D0A0B] transition-all uppercase tracking-wider cursor-pointer">
-                        นักเรียน
-                    </button>
+                        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-graduate"></use></svg> นักเรียน
+                        </button>
                     <button onclick="switchView('dashboard')" id="btn-nav-dashboard" class="px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-extrabold bg-[#F3EFF5] text-[#0D0A0B] border-[2px] border-transparent hover:border-[#454955] transition-all uppercase tracking-wider cursor-pointer">
-                        สถิติห้องเรียน
-                    </button>
+                        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-chart"></use></svg> สถิติห้องเรียน
+                        </button>
                     <button onclick="checkAdminAccess()" id="btn-nav-teacher" class="px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-extrabold bg-[#F3EFF5] text-[#0D0A0B] border-[2px] border-transparent hover:border-[#454955] transition-all uppercase tracking-wider cursor-pointer">
-                        ระบบครู
-                    </button>
+                        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-board"></use></svg> ระบบครู
+                        </button>
                 </div>
             </div>
         </div>
     </nav>
 
     <!-- 🌿 MAIN WORKSPACE CONTAINER -->
-    <main class="flex-grow max-w-[1440px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-10 pb-24 md:pb-12 z-10 flex flex-col">
+    <main id="app-main" class="flex-grow max-w-[1440px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-10 pb-24 md:pb-12 z-10 flex flex-col">
 
         <!-- ================= ตรวจสอบคะแนนนักเรียน VIEW ================= -->
         <div id="student-view" class="space-y-8 flex flex-col max-w-3xl mx-auto w-full flex-grow justify-center py-2">
@@ -390,17 +506,17 @@
                         <svg class="brand-spark" aria-hidden="true"><use href="#hs-brand-spark"></use></svg>
                         <span class="text-[11px] font-black uppercase tracking-[0.15em] text-[#0D0A0B]">ตรวจสอบคะแนนนักเรียน</span>
                     </div>
-                    <span class="text-[10px] font-bold text-[#3B741D] uppercase tracking-widest">คะแนนและสถานะงาน</span>
+                    <button id="hs-motion-toggle" class="hs-motion-toggle" type="button" aria-pressed="true" aria-label="ลดภาพเคลื่อนไหว" title="ลดภาพเคลื่อนไหวเฉพาะเว็บ"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-sparkles"></use></svg><span>เอฟเฟกต์: เปิด</span></button>
                 </div>
 
                 <div class="brand-hero-body p-6 sm:p-10 md:p-12">
-                    <svg class="brand-hero-mark" aria-hidden="true"><use href="#hs-brand-spark"></use></svg>
+                    <svg class="brand-hero-mark" aria-hidden="true" focusable="false"><use href="#hs-brand-spark"></use></svg>
                     <div class="brand-hero-content max-w-xl mx-auto">
-                        <div class="inline-block bg-[#D8D6DE] border-[1.5px] border-[#454955] px-2.5 py-0.5 text-[10px] font-black text-[#0D0A0B] uppercase tracking-widest mb-3">
+                        <div class="hs-lookup-tag inline-block bg-[#D8D6DE] border-[1.5px] border-[#454955] px-2.5 py-0.5 text-[10px] font-black text-[#0D0A0B] uppercase tracking-widest mb-3"><svg class="ui-icon icon-graduate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-graduate"></use></svg>
                             ค้นหาข้อมูลนักเรียน
                         </div>
                         <h2 class="text-2xl sm:text-4xl font-black text-[#0D0A0B] tracking-tight leading-tight mb-2">
-                            ตรวจสอบคะแนนและผลการเรียน
+                            <span>ตรวจสอบคะแนน</span><span class="student-lookup-title-result">และผลการเรียน</span>
                         </h2>
                         <p class="text-[#3B741D] text-xs sm:text-sm font-semibold mb-6 leading-relaxed">
                             กรอกรหัสประจำตัวนักเรียน 5 หลัก เพื่อดูรายละเอียดคะแนนเก็บรายชิ้นงาน สถานะการส่งงาน และผลการเรียน
@@ -412,8 +528,8 @@
                                 <input type="text" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" id="search-std-id" oninput="clearStudentCodeError()" aria-describedby="student-error" placeholder="กรอกรหัสนักเรียน 5 หลัก (เช่น 12345)"
                                     aria-label="รหัสนักเรียน 5 หลัก" class="student-code-input">
                             </div>
-                            <button onclick="searchStudent()" class="bg-[#72B01D] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2.5px] border-[#454955] shadow-[3px_3px_0px_#0D0A0B] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none px-7 py-3.5 sm:py-4 font-black text-base sm:text-lg tracking-wider uppercase transition-all cursor-pointer shrink-0">
-                                ค้นหาข้อมูล ➔
+                            <button onclick="searchStudent()" class="hs-motion-button hs-search-button bg-[#72B01D] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2.5px] border-[#454955] shadow-[3px_3px_0px_#0D0A0B] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none px-7 py-3.5 sm:py-4 font-black text-base sm:text-lg tracking-wider uppercase transition-all cursor-pointer shrink-0">
+                                <svg class="ui-icon icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-search"></use></svg><span>ค้นหาข้อมูล</span>
                             </button>
                         </div>
 
@@ -433,40 +549,43 @@
             <div id="student-result" class="hidden space-y-5 transition-all">
 
                 <!-- Profile Header Card -->
-                <div class="workspace-panel bg-[#F3EFF5] border-[2.5px] border-[#454955] shadow-[5px_5px_0px_#0D0A0B] overflow-hidden">
+                <div class="student-profile-card workspace-panel bg-[#F3EFF5] border-[2.5px] border-[#454955] shadow-[5px_5px_0px_#0D0A0B] overflow-hidden">
                     <div class="bg-[#D8D6DE] border-b-[2px] border-[#454955] px-5 py-2.5 flex justify-between items-center">
                         <div class="flex items-center gap-2">
                             <span class="px-2.5 py-0.5 bg-[#72B01D] text-[#0D0A0B] border border-[#454955] text-[10px] font-black uppercase tracking-wider" id="res-class">ห้องเรียน • เลขที่ 1</span>
                             <span class="text-[10px] font-bold text-[#0D0A0B] uppercase tracking-wider">รหัส: <strong id="res-id">12345</strong></span>
                         </div>
-                        <button onclick="logoutStudent()" class="bg-[#F3EFF5] hover:bg-[#0D0A0B] text-[#0D0A0B] hover:text-[#F3EFF5] border-[1.5px] border-[#454955] px-3 py-1 text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer">
+                        <button onclick="logoutStudent()" class="hs-motion-button bg-[#F3EFF5] hover:bg-[#0D0A0B] text-[#0D0A0B] hover:text-[#F3EFF5] border-[1.5px] border-[#454955] px-3 py-1 text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer">
                             ออกจากระบบ ✕
                         </button>
                     </div>
 
-                    <div class="p-5 sm:p-7 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-5">
-                        <div class="flex items-center gap-4 sm:gap-5">
-                            <div class="relative shrink-0">
+                    <div class="student-profile-body p-5 sm:p-7 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-5">
+                        <div class="student-profile-identity flex items-center gap-4 sm:gap-5">
+                            <div class="shrink-0">
                                 <img id="res-avatar" src="" class="object-cover border-[2.5px] border-[#454955] shadow-[3px_3px_0px_#0D0A0B] bg-[#D8D6DE]" alt="รูปโปรไฟล์นักเรียน" title="คลิกเพื่อดูรูปใหญ่">
-                                <button onclick="promptStudentAvatarUpdate(); event.stopPropagation();" class="absolute -bottom-2 -right-2 bg-[#D8D6DE] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2px] border-[#454955] w-7 h-7 flex items-center justify-center shadow-[2px_2px_0px_#0D0A0B] text-xs font-black cursor-pointer" title="เปลี่ยนรูปโปรไฟล์">✎</button>
                             </div>
-                            <div>
-                                <p class="workspace-eyebrow mb-0.5">ข้อมูลนักเรียน</p>
+                            <div class="student-profile-name">
+                                <div class="student-profile-label">
+                                    <p class="workspace-eyebrow mb-0.5">ข้อมูลนักเรียน</p>
+                                    <button type="button" onclick="promptStudentAvatarUpdate(); event.stopPropagation();" class="student-avatar-edit hs-motion-button bg-[#D8D6DE] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2px] border-[#454955] flex items-center justify-center shadow-[2px_2px_0px_#0D0A0B] text-xs font-black cursor-pointer" title="เปลี่ยนรูปโปรไฟล์" aria-label="เปลี่ยนรูปโปรไฟล์นักเรียน"><svg class="ui-icon icon-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-pencil"></use></svg></button>
+                                </div>
                                 <h3 id="res-name" class="text-xl sm:text-3xl font-black text-[#0D0A0B] leading-tight break-words">ชื่อ-นามสกุล</h3>
 
                             </div>
                         </div>
 
                         <!-- Grade Box -->
-                        <div class="w-full sm:w-auto flex sm:flex-col items-center justify-between bg-[#D8D6DE] border-[2.5px] border-[#454955] shadow-[4px_4px_0px_#0D0A0B] px-6 py-3 text-center">
-                            <span class="text-[10px] font-black uppercase tracking-widest text-[#0D0A0B]">ผลการเรียน</span>
+                        <div id="res-grade-card" class="flex flex-col items-center justify-center bg-[#D8D6DE] border-[2.5px] border-[#454955] shadow-[4px_4px_0px_#0D0A0B] px-6 py-3 text-center">
+                            <svg class="hs-grade-spark" aria-hidden="true" focusable="false"><use href="#hs-brand-spark"></use></svg>
+                            <span class="text-[10px] font-black uppercase tracking-widest text-[#0D0A0B]">เกรดปัจจุบัน</span>
                             <div id="res-grade" class="text-3xl sm:text-4xl font-black text-[#3B741D] leading-none mt-0.5">4.0</div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Score Summary Ledger -->
-                <div class="workspace-panel bg-[#F3EFF5] border-[2.5px] border-[#454955] shadow-[5px_5px_0px_#0D0A0B] p-5 sm:p-7">
+                <div id="student-score-summary" class="workspace-panel bg-[#F3EFF5] border-[2.5px] border-[#454955] shadow-[5px_5px_0px_#0D0A0B] p-5 sm:p-7">
                     <div class="flex justify-between items-end mb-4 border-b-[2px] border-[#454955] pb-3">
                         <div>
                             <span class="workspace-eyebrow">สรุปคะแนน</span>
@@ -477,7 +596,7 @@
 
                     <div class="mb-6">
                         <div class="w-full bg-[#D8D6DE] h-5 border-[2px] border-[#454955] relative overflow-hidden">
-                            <div id="res-progress-bar" class="progress-bar-fill h-full border-r-[2px] border-[#454955]" style="width: 0%; background-color: #3B741D;"></div>
+                            <div id="res-progress-bar" class="progress-bar-fill h-full border-r-[2px] border-[#454955]" style="width: 0%; background-color: #3F7D20;"></div>
                         </div>
                         <div class="flex justify-between text-[11px] font-bold text-[#0D0A0B]/70 mt-1.5">
                             <span>0</span><span>50 (ผ่านเกณฑ์)</span><span>80 (เกรด 4)</span><span>100</span>
@@ -486,17 +605,21 @@
 
 
                     <div class="student-quick-grid">
-                        <button type="button" id="res-missing-card" class="student-quick-card" onclick="document.getElementById('res-tasks-section').scrollIntoView({behavior:'smooth',block:'start'})">
+                        <button type="button" id="res-missing-card" class="student-quick-card hs-motion-button" onclick="showStudentTaskFilter('missing', true)">
                             <span class="text-xs font-bold">งานที่ยังไม่ส่ง</span>
                             <strong id="res-missing-count">0 งาน</strong>
                             <span class="text-[11px]">แตะดูรายการงาน ↓</span>
                         </button>
-                        <div class="student-quick-card">
-                            <span class="text-xs font-bold">ส่งแล้ว รอตรวจ</span>
-                            <strong id="res-pending-count">0 งาน</strong>
-                            <span class="text-[11px]">รอคุณครูให้คะแนน</span>
-                        </div>
+                        <button type="button" class="student-quick-card hs-motion-button" onclick="showStudentTaskFilter('pending', true)">
+                            <span class="text-xs font-bold">ส่งแล้ว รอตรวจ</span><strong id="res-pending-count">0 งาน</strong><span class="text-[11px]">แตะดูงานที่รอตรวจ ↓</span>
+                        </button>
+                        <button type="button" class="student-quick-card hs-motion-button" onclick="showStudentTaskFilter('graded', true)">
+                            <span class="text-xs font-bold">ตรวจให้คะแนนแล้ว</span><strong id="res-graded-count">0 งาน</strong><span class="text-[11px]">แตะดูคะแนนรายชิ้นงาน ↓</span>
+                        </button>
                     </div>
+                    <div class="student-next-step"><strong id="res-next-step-title"></strong><span id="res-next-step-detail"></span></div>
+                    <p class="task-summary-caption" id="res-submission-progress"></p>
+                    <p class="task-summary-caption">เกรดคำนวณจากคะแนนที่บันทึกอยู่ในระบบขณะนี้ อาจเปลี่ยนเมื่อครูให้คะแนนเพิ่มเติม</p>
                     <p id="res-missing-preview" class="text-xs font-bold leading-relaxed mb-2"></p>
 
 
@@ -518,8 +641,8 @@
                             <div id="res-score-fin" class="text-xl sm:text-2xl font-black text-[#0D0A0B]">0</div>
                         </div>
                         <div class="bg-[#3F7D20] p-3 border-[2px] border-[#454955] shadow-[2.5px_2.5px_0px_#0D0A0B] text-center col-span-2 md:col-span-1">
-                            <div class="text-[10px] text-[#D8D6DE] mb-0.5 font-bold uppercase">โบนัสพิเศษ</div>
-                            <div id="res-score-bonus" class="text-xl sm:text-2xl font-black text-[#F3EFF5]">+0</div>
+                            <div class="text-[10px] text-[#D8D6DE] mb-0.5 font-bold uppercase">โบนัสรวม</div>
+                            <div id="res-score-bonus" class="text-xl sm:text-2xl font-black text-[#F3EFF5]">+0</div><p id="res-bonus-detail" class="text-[11px] mt-1 text-[#F3EFF5]"></p>
                         </div>
                     </div>
                 </div>
@@ -527,14 +650,22 @@
                 <!-- Assignments Checklist -->
                 <div id="res-tasks-section" style="scroll-margin-top:100px" class="workspace-panel bg-[#F3EFF5] border-[2.5px] border-[#454955] shadow-[5px_5px_0px_#0D0A0B] p-5 sm:p-6">
                     <h4 class="text-sm sm:text-base font-black text-[#0D0A0B] mb-4 pb-2 border-b-[2px] border-[#454955] uppercase flex items-center gap-2">
-                        <span class="w-2.5 h-2.5 bg-[#3F7D20] border border-[#454955]"></span> ชิ้นงานและสถานะการส่ง
+                        <svg class="ui-icon icon-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-clipboard"></use></svg> ชิ้นงานและสถานะการส่ง
                     </h4>
+                    <div class="student-task-filters" role="group" aria-label="กรองสถานะชิ้นงาน">
+                        <button type="button" class="hs-motion-button" data-task-filter="all" aria-pressed="true" onclick="showStudentTaskFilter('all')"><svg class="ui-icon icon-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-clipboard"></use></svg><span>ทั้งหมด</span></button>
+                        <button type="button" class="hs-motion-button" data-task-filter="missing" aria-pressed="false" onclick="showStudentTaskFilter('missing')"><svg class="ui-icon icon-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-alert"></use></svg><span>ยังไม่ส่ง</span></button>
+                        <button type="button" class="hs-motion-button" data-task-filter="pending" aria-pressed="false" onclick="showStudentTaskFilter('pending')"><svg class="ui-icon icon-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-clock"></use></svg><span>รอตรวจ</span></button>
+                        <button type="button" class="hs-motion-button" data-task-filter="graded" aria-pressed="false" onclick="showStudentTaskFilter('graded')"><svg class="ui-icon icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-check"></use></svg><span>ตรวจแล้ว</span></button>
+                    </div>
+                    <p id="res-task-filter-count" class="task-summary-caption" role="status"></p>
+                    <p id="res-task-filter-empty" class="task-summary-caption" hidden></p>
                     <div id="res-tasks-list" class="space-y-2.5 mt-2"></div>
                 </div>
 
                 <details class="student-update-box workspace-panel">
                     <summary>ดูคะแนนที่เปลี่ยนจากครั้งก่อน</summary>
-                    <p class="text-[11px] mt-2">เทียบกับการเข้าดูครั้งก่อนบนเครื่องนี้</p>
+                    <p class="text-[11px] mt-2">เทียบกับข้อมูลก่อนหน้าในแท็บนี้ เมื่อปิดแท็บจะเริ่มเปรียบเทียบใหม่</p>
                     <ul id="res-recent-scores"></ul>
                     <p id="res-data-updated" class="text-[11px] mt-3"></p>
                 </details>
@@ -542,7 +673,7 @@
                 <!-- Behavior Badges -->
                 <div class="workspace-panel bg-[#F3EFF5] border-[2.5px] border-[#454955] shadow-[5px_5px_0px_#0D0A0B] p-5 sm:p-6">
                     <h4 class="text-sm sm:text-base font-black text-[#0D0A0B] mb-3 pb-2 border-b-[2px] border-[#454955] uppercase flex items-center gap-2">
-                        <span class="w-2.5 h-2.5 bg-[#3F7D20] border border-[#454955]"></span> พฤติกรรมและรางวัลสะสม
+                        <svg class="ui-icon icon-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-star"></use></svg> พฤติกรรมและรางวัลสะสม
                     </h4>
                     <div id="res-badges-list" class="flex flex-wrap gap-2 mt-2"></div>
                     <div id="res-behavior-warning" class="mt-3 p-3 bg-[#D8D6DE] border-[2px] border-[#454955] text-[#0D0A0B] font-bold text-xs hidden"></div>
@@ -550,7 +681,7 @@
 
                 <div class="workspace-panel border-[2px] border-[#454955] bg-[#F3EFF5] p-4 sm:p-5">
                     <p class="workspace-eyebrow mb-2">กิจกรรมเสริม</p>
-                    <button type="button" onclick="openGachaArcadeModal()" class="student-activity-link"><span>🎮 เล่นควิซและสะสมตัวละคร</span><span aria-hidden="true">→</span></button>
+                    <button type="button" onclick="openGachaArcadeModal()" class="student-activity-link hs-motion-button"><span class="activity-label"><svg class="ui-icon icon-controller" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-controller"></use></svg><span>เล่นควิซและสะสมตัวละคร</span></span><svg class="ui-icon icon-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-arrow"></use></svg></button>
                 </div>
 
             </div>
@@ -625,7 +756,7 @@
         <div id="teacher-view" class="space-y-5 hidden w-full">
 
             <!-- Studio Command Bar -->
-            <div class="workspace-panel bg-[#D8D6DE] p-4 sm:p-5 border-[2.5px] border-[#454955] shadow-[5px_5px_0px_#0D0A0B] flex flex-col lg:flex-row gap-4 lg:items-center justify-between">
+            <div class="teacher-commandbar workspace-panel bg-[#D8D6DE] p-4 sm:p-5 border-[2.5px] border-[#454955] shadow-[5px_5px_0px_#0D0A0B] flex flex-col lg:flex-row gap-4 lg:items-center justify-between">
                 <div class="flex items-center gap-3 w-full lg:w-auto">
                     <div class="bg-[#F3EFF5] px-3 py-2 border-[2px] border-[#454955] shadow-[2.5px_2.5px_0px_#0D0A0B] flex items-center gap-2.5 w-full lg:w-auto">
                         <svg class="brand-spark" aria-hidden="true"><use href="#hs-brand-spark"></use></svg><span class="text-xs font-black text-[#3B741D] uppercase tracking-wider shrink-0">ห้องเรียน:</span>
@@ -635,10 +766,11 @@
 
                 <div class="w-full lg:w-auto">
                     <div class="teacher-primary-actions">
-                        <button type="button" onclick="toggleAdminTools()" class="bg-[#72B01D] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2px] border-[#454955] px-4 py-2 text-xs font-black shadow-[2.5px_2.5px_0px_#0D0A0B] transition-colors cursor-pointer">+ จัดการห้อง / เพิ่มงาน</button>
-                        <button type="button" onclick="openScannerModal()" class="bg-[#F3EFF5] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2px] border-[#454955] px-3.5 py-2 text-xs font-bold shadow-[2.5px_2.5px_0px_#0D0A0B] transition-colors cursor-pointer">📷 ตรวจงานด้วย QR</button>
-                        <button type="button" onclick="logoutTeacher()" class="bg-[#F3EFF5] hover:bg-[#D8D6DE] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-2 text-xs font-bold cursor-pointer">ออกจากระบบ</button>
+                        <button type="button" onclick="toggleAdminTools()" class="bg-[#72B01D] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2px] border-[#454955] px-4 py-2 text-xs font-black shadow-[2.5px_2.5px_0px_#0D0A0B] transition-colors cursor-pointer"><svg class="ui-icon icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-plus"></use></svg><span>จัดการห้อง / เพิ่มงาน</span></button>
+                        <button type="button" onclick="openScannerModal()" class="bg-[#F3EFF5] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2px] border-[#454955] px-3.5 py-2 text-xs font-bold shadow-[2.5px_2.5px_0px_#0D0A0B] transition-colors cursor-pointer"><svg class="ui-icon icon-scan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-scan"></use></svg><span>ตรวจงานด้วย QR</span></button>
+                        <button type="button" onclick="logoutTeacher()" class="bg-[#F3EFF5] hover:bg-[#D8D6DE] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-2 text-xs font-bold cursor-pointer"><svg class="ui-icon icon-exit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-exit"></use></svg><span>ออกจากระบบ</span></button>
             <div id="teacher-save-feedback" class="save-feedback" data-state="idle">
+                <span class="save-state-glyph" aria-hidden="true"><svg class="ui-icon icon-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-spinner"></use></svg><svg class="ui-icon icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-check"></use></svg><svg class="ui-icon icon-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-alert"></use></svg></span>
                 <div class="flex-grow" role="status" aria-live="polite" aria-atomic="true">
                     <strong id="teacher-save-label">พร้อมกรอกคะแนน</strong>
                     <p id="teacher-save-detail" class="mt-1">กรอกคะแนนแล้วแตะนอกช่อง ระบบจะบันทึกอัตโนมัติ</p>
@@ -650,12 +782,12 @@
             </div>
                     </div>
                     <details class="teacher-more-tools">
-                        <summary class="mt-2 bg-[#F3EFF5] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-2 text-xs font-bold">เครื่องมืออื่น ๆ ▾</summary>
+                        <summary class="mt-2 bg-[#F3EFF5] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-2 text-xs font-bold"><svg class="ui-icon icon-tools" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-tools"></use></svg><span>เครื่องมืออื่น ๆ ▾</span></summary>
                         <div class="teacher-more-list">
-                            <button type="button" onclick="openRandomPicker()" class="bg-[#F3EFF5] hover:bg-[#D8D6DE] border-[2px] border-[#454955] px-3 py-2 text-xs font-bold cursor-pointer">🎲 สุ่มชื่อ</button>
-                            <button type="button" onclick="openBulkBehaviorModal()" class="bg-[#F3EFF5] hover:bg-[#D8D6DE] border-[2px] border-[#454955] px-3 py-2 text-xs font-bold cursor-pointer">🌟 ให้ดาวกลุ่ม</button>
-                            <button type="button" onclick="printQRCards()" class="bg-[#F3EFF5] hover:bg-[#D8D6DE] border-[2px] border-[#454955] px-3 py-2 text-xs font-bold cursor-pointer">📇 พิมพ์บัตร QR</button>
-                            <button type="button" onclick="exportCSV()" class="bg-[#F3EFF5] hover:bg-[#D8D6DE] border-[2px] border-[#454955] px-3 py-2 text-xs font-bold cursor-pointer">📥 ส่งออก CSV</button>
+                            <button type="button" onclick="openRandomPicker()" class="bg-[#F3EFF5] hover:bg-[#D8D6DE] border-[2px] border-[#454955] px-3 py-2 text-xs font-bold cursor-pointer"><svg class="ui-icon icon-dice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-dice"></use></svg><span>สุ่มชื่อ</span></button>
+                            <button type="button" onclick="openBulkBehaviorModal()" class="bg-[#F3EFF5] hover:bg-[#D8D6DE] border-[2px] border-[#454955] px-3 py-2 text-xs font-bold cursor-pointer"><svg class="ui-icon icon-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-star"></use></svg><span>ให้ดาวกลุ่ม</span></button>
+                            <button type="button" onclick="printQRCards()" class="bg-[#F3EFF5] hover:bg-[#D8D6DE] border-[2px] border-[#454955] px-3 py-2 text-xs font-bold cursor-pointer"><svg class="ui-icon icon-card" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-card"></use></svg><span>พิมพ์บัตร QR</span></button>
+                            <button type="button" onclick="exportCSV()" class="bg-[#F3EFF5] hover:bg-[#D8D6DE] border-[2px] border-[#454955] px-3 py-2 text-xs font-bold cursor-pointer"><svg class="ui-icon icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-download"></use></svg><span>ส่งออก CSV</span></button>
                         </div>
                     </details>
                 </div>
@@ -809,18 +941,31 @@
 
 
             <!-- 🌿 MINIMAL NEO-BRUTALIST MASTER GRADEBOOK TABLE -->
-            <div class="workspace-panel bg-[#F3EFF5] border-[2.5px] border-[#454955] shadow-[6px_6px_0px_#0D0A0B] overflow-hidden relative">
+            <div id="teacher-gradebook-card" class="workspace-panel bg-[#F3EFF5] border-[2.5px] border-[#454955] shadow-[6px_6px_0px_#0D0A0B] overflow-hidden relative">
                 <!-- Minimal Legend & Info Strip -->
-                <div class="px-4 py-2.5 bg-[#D8D6DE] border-b-[2px] border-[#454955] flex flex-wrap items-center justify-between gap-3 text-xs font-bold text-[#0D0A0B]">
+                <div class="gradebook-legend px-4 py-2.5 bg-[#D8D6DE] border-b-[2px] border-[#454955] flex flex-wrap items-center justify-between gap-3 text-xs font-bold text-[#0D0A0B]">
                     <div class="flex items-center gap-3 flex-wrap">
                         <span class="text-[11px] font-black uppercase tracking-wider">ตารางคะแนน</span>
                         <span class="inline-flex items-center gap-1.5 bg-[#72B01D] text-[#0D0A0B] px-2 py-0.5 border border-[#454955] text-[10px]"><span class="w-1.5 h-1.5 bg-[#F3EFF5] rounded-full"></span> ตรวจแล้ว / คะแนนเต็ม</span>
-                        <span class="inline-flex items-center gap-1.5 bg-[#D8D6DE] text-[#0D0A0B] px-2 py-0.5 border border-[#454955] text-[10px]"><span class="w-1.5 h-1.5 bg-[#0D0A0B] rounded-full"></span> บันทึกคะแนนแล้ว</span>
+                        <span class="inline-flex items-center gap-1.5 bg-[#D8D6DE] text-[#0D0A0B] px-2 py-0.5 border border-[#454955] text-[10px]"><span class="w-1.5 h-1.5 bg-[#0D0A0B] rounded-full"></span> ส่งแล้ว รอตรวจ (รอ)</span>
                         <span class="inline-flex items-center gap-1.5 bg-[#F3EFF5] text-[#0D0A0B] px-2 py-0.5 border border-dashed border-[#454955] text-[10px]">ยังไม่ได้กรอก</span>
                     </div>
                     <span class="text-[11px] text-[#3B741D] font-extrabold">🔒 ตรึงรายชื่อด้านซ้าย • หัวตารางชื่องานแนวตั้ง</span>
                 </div>
 
+                <div class="gradebook-toolbar">
+                    <div><label for="teacher-student-search">ค้นหานักเรียน</label><input id="teacher-student-search" type="search" placeholder="ชื่อ / รหัส 5 หลัก / เลขที่" oninput="applyTeacherFilters()"></div>
+                    <div><label for="teacher-filter-task">เลือกชิ้นงาน</label><select id="teacher-filter-task" onchange="applyTeacherFilters()"><option value="">ทุกชิ้นงาน</option></select></div>
+                    <div><label for="teacher-filter-status">สถานะชิ้นงาน</label><select id="teacher-filter-status" onchange="applyTeacherFilters()"><option value="all">ทุกสถานะ</option><option value="missing">ยังไม่ส่ง</option><option value="pending">ส่งแล้ว รอตรวจ</option><option value="graded">ตรวจให้คะแนนแล้ว</option></select></div>
+                    <button type="button" onclick="resetTeacherFilters()">ล้างตัวกรอง</button>
+                </div>
+                <div class="mobile-gradebook-view">
+                    <label for="teacher-mobile-column">มุมมองกรอกคะแนน</label>
+                    <select id="teacher-mobile-column" onchange="applyMobileGradebookColumns()"><option value="all">ทั้งหมด — เลื่อนซ้ายขวา</option></select>
+                    <p id="teacher-mobile-view-note">เลือกชิ้นงานเพื่อกรอกทีละคอลัมน์ หรือเลื่อนดูตารางทั้งหมด</p>
+                </div>
+                <div class="gradebook-filter-info"><span id="teacher-filter-count" role="status" aria-live="polite"></span><span>Enter: คนถัดไปในคอลัมน์เดิม • Shift + Enter: คนก่อนหน้า</span></div>
+                <p id="teacher-filter-empty" class="gradebook-empty" hidden>ไม่พบรายชื่อที่ตรงกับตัวกรอง ลองเปลี่ยนเงื่อนไขหรือล้างตัวกรอง</p>
                 <div class="gradebook-scroll-tools">
                     <span>เลื่อนซ้าย–ขวาเพื่อดูคะแนน • เลขที่และชื่ออยู่ด้านซ้ายเสมอ</span>
                     <button type="button" onclick="scrollTeacherGradebook(-1)" aria-label="เลื่อนตารางคะแนนไปทางซ้าย">←</button>
@@ -842,10 +987,10 @@
     <footer id="main-footer" class="border-t-[4px] border-[#454955]  bg-[#F3EFF5]  py-6 text-center mt-auto transition-colors duration-300">
         <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-4">
             <div class="flex items-center gap-3">
-                <span class="bg-[#D8D6DE] text-[#0D0A0B] font-black text-xs px-2.5 py-1 border-[3px] border-[#454955] shadow-[2px_2px_0px_#0D0A0B] inline-flex items-center gap-1.5"><svg class="brand-spark" aria-hidden="true"><use href="#hs-brand-spark"></use></svg>HS EDUTRACK</span>
-                <span class="text-xs font-black text-[#0D0A0B]  uppercase tracking-wider">ระบบติดตามคะแนนและงานของนักเรียน</span>
+                <span class="footer-brand bg-[#D8D6DE] text-[#0D0A0B] font-black text-xs px-2.5 py-1 border-[3px] border-[#454955] shadow-[2px_2px_0px_#0D0A0B] inline-flex items-center gap-1.5"><svg class="brand-spark" aria-hidden="true"><use href="#hs-brand-spark"></use></svg>HS EDUTRACK</span>
+                <span class="footer-description text-xs font-black text-[#0D0A0B]  uppercase tracking-wider">ระบบติดตามคะแนนและงานของนักเรียน</span>
             </div>
-            <p class="text-[10px] font-bold text-[#3B741D]  uppercase tracking-widest">© 2026 Круมิมิ • ALL RIGHTS RESERVED</p>
+            <p class="footer-copyright text-[10px] font-bold text-[#3B741D]  uppercase tracking-widest">© 2026 Круมิมิ • ALL RIGHTS RESERVED</p>
         </div>
     </footer>
 
@@ -1031,16 +1176,16 @@
             <div class="bg-[#D8D6DE]/60 px-4 py-2.5 border-b-[2px] border-[#454955] flex flex-wrap items-center justify-between gap-2 shrink-0">
                 <div class="flex items-center gap-2 flex-wrap">
                     <button id="arc-tab-btn-quiz" onclick="switchArcadeTab('quiz')" class="bg-[#72B01D] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-1.5 text-xs font-black shadow-[2.5px_2.5px_0px_#0D0A0B] uppercase cursor-pointer transition-all">
-                        🧠 ทำข้อสอบรับคูปอง
+                        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-clipboard"></use></svg> ทำข้อสอบรับคูปอง
                     </button>
                     <button id="arc-tab-btn-gacha" onclick="switchArcadeTab('gacha')" class="bg-[#F3EFF5] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-1.5 text-xs font-black shadow-[2.5px_2.5px_0px_#0D0A0B] uppercase cursor-pointer transition-all">
-                        🎰 ตู้สุ่มกาชา
+                        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-dice"></use></svg> ตู้สุ่มกาชา
                     </button>
                     <button id="arc-tab-btn-showcase" onclick="switchArcadeTab('showcase')" class="bg-[#F3EFF5] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-1.5 text-xs font-black shadow-[2.5px_2.5px_0px_#0D0A0B] uppercase cursor-pointer transition-all">
-                        📘 ตู้โชว์สะสม (<span id="arc-species-count">0/118</span>)
+                        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-book"></use></svg> ตู้โชว์สะสม (<span id="arc-species-count">0/118</span>)
                     </button>
                     <button id="arc-tab-btn-score" onclick="switchArcadeTab('score')" class="bg-[#F3EFF5] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-1.5 text-xs font-black shadow-[2.5px_2.5px_0px_#0D0A0B] uppercase cursor-pointer transition-all">
-                        📊 ตารางคะแนนดิบ
+                        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-chart"></use></svg> ตารางคะแนนดิบ
                     </button>
                 </div>
             </div>
@@ -1125,7 +1270,7 @@
                             </div>
 
                             <button id="gacha-pull-lever-btn" onclick="spinGachaMachine()" class="w-full bg-[#72B01D] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2.5px] border-[#454955] py-3.5 px-5 text-sm sm:text-base font-black uppercase tracking-wider shadow-[4px_4px_0px_#0D0A0B] active:translate-y-0.5 active:shadow-none transition-all cursor-pointer flex items-center justify-center gap-2">
-                                <span>🎰</span> <span>หยอด 1 คูปอง & หมุนตู้กาชา!</span>
+                                <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-dice"></use></svg> <span>หยอด 1 คูปอง & หมุนตู้กาชา!</span>
                             </button>
                         </div>
 
@@ -2004,6 +2149,7 @@
                 return;
             }
             isSpinningGacha = true;
+            window.HongSonExtras?.gachaBusy(true);
             setTimeout(async () => {
                 try {
                     const result = await runStudentAction('spinGacha');
@@ -2017,6 +2163,7 @@
                     showModal({ title: 'หมุนกาชาไม่สำเร็จ', msg: escapeHTML(error.message), type: 'alert' });
                 } finally {
                     isSpinningGacha = false;
+                    window.HongSonExtras?.gachaBusy(false);
                 }
             }, 600);
         }
@@ -2141,6 +2288,111 @@
             { thBg: '#D8D6DE', tdBg: '#D8D6DE', badgeBg: '#72B01D', badgeText: '#0D0A0B', borderAccent: '#454955' }
         ];
 
+        // Mobile controls only change the displayed columns, never score data.
+        let mobileGradebookClassId = null;
+        function updateMobileGradebookOptions(cls) {
+            const select = document.getElementById('teacher-mobile-column');
+            const previous = mobileGradebookClassId === cls.id ? select.value : 'all';
+            mobileGradebookClassId = cls.id;
+            const options = [{value:'all',label:'ทั้งหมด — เลื่อนซ้ายขวา'}]
+                .concat(cls.assignments.map(task => ({value:'task:' + task.id,label:task.name + ' (เต็ม ' + task.maxScore + ')'})))
+                .concat([{value:'fixed:attendance',label:'จิตพิสัย (เต็ม 10)'},{value:'fixed:midterm',label:'กลางภาค (เต็ม 20)'},{value:'fixed:final',label:'ปลายภาค (เต็ม 20)'}]);
+            select.innerHTML = options.map(option => '<option value="' + escapeHTML(option.value) + '">' + escapeHTML(option.label) + '</option>').join('');
+            select.value = options.some(option => option.value === previous) ? previous : 'all';
+            applyMobileGradebookColumns();
+        }
+
+        function applyMobileGradebookColumns() {
+            const table = document.getElementById('teacher-gradebook-table');
+            const selected = document.getElementById('teacher-mobile-column').value;
+            const cls = getActiveAdminClass();
+            const compact = window.matchMedia('(max-width:639px)').matches && selected !== 'all' && !!cls;
+            const firstRow = document.querySelector('#admin-table-body tr[data-student-id]');
+            let selectedIndex = -1;
+            if (firstRow) selectedIndex = Array.from(firstRow.cells).findIndex(cell =>
+                Array.from(cell.querySelectorAll('input[data-score-column]')).some(input => input.dataset.scoreColumn === selected));
+            const taskCount = cls ? Math.max(1, cls.assignments.length) : 1;
+            const totalIndex = taskCount + 6;
+            const activeCompact = compact && selectedIndex >= 0;
+            table.dataset.mobileColumn = String(activeCompact);
+            document.getElementById('teacher-gradebook-scroll').setAttribute('aria-label', activeCompact
+                ? 'ตารางคะแนน ' + document.getElementById('teacher-mobile-column').selectedOptions[0].textContent + ' และคะแนนรวม'
+                : 'ตารางคะแนน เลื่อนซ้ายขวาได้');
+            Array.from(table.rows).forEach(row => Array.from(row.cells).forEach((cell,index) => {
+                cell.hidden = activeCompact && ![0,selectedIndex,totalIndex].includes(index);
+                cell.dataset.mobileSelected = String(activeCompact && index === selectedIndex);
+                cell.dataset.mobileTotal = String(activeCompact && index === totalIndex);
+            }));
+            document.getElementById('teacher-mobile-view-note').textContent = activeCompact
+                ? 'แสดงรายชื่อ คะแนนที่เลือก และคะแนนรวม • แตะช่องเพื่อกรอก'
+                : 'เลือกชิ้นงานเพื่อกรอกทีละคอลัมน์ หรือเลื่อนดูตารางทั้งหมด';
+        }
+
+        function toggleMobileTaskTools(button, force) {
+            const header = button.closest('th');
+            const open = force === undefined ? header.dataset.toolsOpen !== 'true' : force;
+            document.querySelectorAll('#admin-table-head th[data-tools-open]').forEach(other => {
+                other.dataset.toolsOpen = 'false';
+                other.querySelector('.mobile-task-menu')?.setAttribute('aria-expanded', 'false');
+            });
+            header.dataset.toolsOpen = String(open);
+            const trigger = header.querySelector('.mobile-task-menu');
+            trigger.setAttribute('aria-expanded', String(open));
+            if (!open) trigger.focus({preventScroll:true});
+        }
+        window.addEventListener('resize', () => applyMobileGradebookColumns());
+
+        function assignmentStatus(value) {
+            return value === undefined || value === null || value === '' ? 'missing' : value === 'submitted' ? 'pending' : 'graded';
+        }
+
+        let teacherFilterClassId = null;
+        function updateTeacherFilterOptions(cls) {
+            const taskSelect = document.getElementById('teacher-filter-task');
+            if (teacherFilterClassId !== cls.id) {
+                teacherFilterClassId = cls.id;
+                document.getElementById('teacher-student-search').value = '';
+                document.getElementById('teacher-filter-status').value = 'all';
+                taskSelect.value = '';
+            }
+            const selected = taskSelect.value;
+            taskSelect.innerHTML = '<option value="">ทุกชิ้นงาน</option>' + cls.assignments.map(task =>
+                '<option value="' + escapeHTML(task.id) + '">' + escapeHTML(task.name) + '</option>').join('');
+            if (cls.assignments.some(task => task.id === selected)) taskSelect.value = selected;
+        }
+
+        function applyTeacherFilters(preserveActiveRow = false) {
+            const cls = getActiveAdminClass();
+            const rows = Array.from(document.querySelectorAll('#admin-table-body tr[data-student-id]'));
+            const query = document.getElementById('teacher-student-search').value.trim().toLocaleLowerCase('th');
+            const taskId = document.getElementById('teacher-filter-task').value;
+            const status = document.getElementById('teacher-filter-status').value;
+            let visible = 0;
+            const students = new Map((cls ? cls.students : []).map(student => [student.id, student]));
+            rows.forEach(row => {
+                const student = students.get(row.dataset.studentId);
+                if (!student) return;
+                const matchesSearch = !query || (/^[0-9]{1,3}$/.test(query)
+                    ? Number(student.no) === Number(query)
+                    : String(student.name).toLocaleLowerCase('th').includes(query) || String(student.studentId).includes(query));
+                const tasks = cls.assignments.filter(task => !taskId || task.id === taskId);
+                const matchesStatus = status === 'all' || tasks.some(task => assignmentStatus(student.scores && student.scores[task.id]) === status);
+                const editing = preserveActiveRow && row.contains(document.activeElement);
+                row.hidden = !(matchesSearch && matchesStatus) && !editing;
+                if (!row.hidden) visible++;
+            });
+            document.getElementById('teacher-filter-count').textContent = 'แสดง ' + visible + ' / ' + (cls ? cls.students.length : 0) + ' คน' +
+                (status !== 'all' && !taskId ? ' • มีอย่างน้อย 1 งานตรงกับสถานะที่เลือก' : '');
+            document.getElementById('teacher-filter-empty').hidden = !cls || !cls.students.length || visible > 0;
+        }
+
+        function resetTeacherFilters() {
+            document.getElementById('teacher-student-search').value = '';
+            document.getElementById('teacher-filter-task').value = '';
+            document.getElementById('teacher-filter-status').value = 'all';
+            applyTeacherFilters();
+        }
+
         function renderTeacherView() {
             const activeId = document.activeElement ? document.activeElement.id : null;
             const selector = document.getElementById('teacher-class-selector');
@@ -2151,6 +2403,10 @@
             if (!appData.classes || appData.classes.length === 0) {
                 selector.innerHTML = '<option value="">-- ยังไม่มีห้องเรียน --</option>';
                 headEl.innerHTML = '';
+                document.getElementById('teacher-filter-count').textContent = 'ยังไม่มีห้องเรียน';
+                document.getElementById('teacher-mobile-column').innerHTML = '<option value="all">ยังไม่มีห้องเรียน</option>';
+                document.getElementById('teacher-gradebook-table').dataset.mobileColumn = 'false';
+                document.getElementById('teacher-filter-empty').hidden = true;
                 bodyEl.innerHTML = `<tr><td colspan="15" class="text-center py-16 text-[#0D0A0B] font-black bg-[#F3EFF5] border-t-[2px] border-[#454955] uppercase">กรุณาเพิ่มห้องเรียนเพื่อเริ่มต้นใช้งาน</td></tr>`;
                 return;
             }
@@ -2179,6 +2435,8 @@
             const cls = getActiveAdminClass();
             if (!cls) return;
 
+            updateTeacherFilterOptions(cls);
+
             // Construct Table Header with Single Solid Sticky Column & Distinct Colored Vertical Task Columns
             let stickyThHTML = `
                 <th class="sticky left-0 top-0 z-40 px-3.5 py-3 min-w-[195px] sm:min-w-[245px] text-left border-r-[3px] border-b-[2.5px] border-[#454955] bg-[#D8D6DE] text-[#0D0A0B] font-black text-xs tracking-wider uppercase shadow-[3px_0_0_#0D0A0B]">
@@ -2203,7 +2461,9 @@
                                 </div>
                                 <span class="text-[9px] font-black text-[#0D0A0B] bg-[#F3EFF5] px-1.5 py-0.2 border border-[#454955] shrink-0">เต็ม ${task.maxScore}</span>
                             </div>
-                            <div class="absolute inset-0 bg-[#D8D6DE] border-[2px] border-[#454955] hidden group-hover/th:flex flex-col justify-around items-center p-1 z-20">
+                            <button type="button" class="mobile-task-menu" aria-expanded="false" aria-label="เครื่องมือ ${escapeHTML(task.name)}" onclick="toggleMobileTaskTools(this)">⋯</button>
+                            <div class="task-header-actions absolute inset-0 bg-[#D8D6DE] border-[2px] border-[#454955] hidden group-hover/th:flex flex-col justify-around items-center p-1 z-20">
+                                <button type="button" class="mobile-task-close" onclick="toggleMobileTaskTools(this, false)" aria-label="ปิดเครื่องมือชิ้นงาน">✕</button>
                                 <button onclick="moveTask('${escapeHTML(task.id)}', -1); event.stopPropagation();" ${index === 0 ? 'disabled class="opacity-25 text-[#0D0A0B] text-[9px]"' : 'class="text-[#0D0A0B] font-black text-[10px] cursor-pointer"'} title="ย้ายซ้าย">◀</button>
                                 <button onclick="editTask('${escapeHTML(task.id)}'); event.stopPropagation();" class="text-[#3B741D] font-black text-[9px] uppercase cursor-pointer">แก้ไข</button>
                                 <button onclick="deleteTask('${escapeHTML(task.id)}'); event.stopPropagation();" class="text-[#0D0A0B] font-black text-[9px] uppercase cursor-pointer">ลบ</button>
@@ -2226,12 +2486,12 @@
             headEl.innerHTML = stickyThHTML;
 
             let tbHTML = '';
-            cls.students.sort((a, b) => a.no - b.no).forEach(std => {
+            [...cls.students].sort((a, b) => a.no - b.no).forEach(std => {
                 const stat = calculateStudentScore(std, cls.assignments);
                 const avatar = getAvatar(std.name, std.avatar);
                 const fallbackSvg = generateSvgAvatar(std.name).replace(/"/g, '&quot;');
                 tbHTML += `
-                <tr class="transition-colors group bg-[#F3EFF5]">
+                <tr data-student-id="${escapeHTML(std.id)}" class="transition-colors group bg-[#F3EFF5]">
                     <td class="sticky left-0 z-20 px-3 py-2 text-left border-r-[3px] border-b-[1.5px] border-[#454955] bg-[#F3EFF5] group-hover:bg-[#D8D6DE] shadow-[3px_0_0_#0D0A0B] min-w-[195px] sm:min-w-[245px]">
                         <div class="flex items-center gap-2.5">
                             <span class="w-6 h-6 bg-[#D8D6DE] text-[#0D0A0B] font-black text-[11px] flex items-center justify-center border-[1.5px] border-[#454955] shrink-0">${std.no}</span>
@@ -2257,7 +2517,7 @@
                         tbHTML += `
                             <td style="background-color: ${theme.tdBg};" class="px-1 py-1.5 border-r-[2px] border-b-[1.5px] border-[#454955] relative group/cell w-14 sm:w-16 min-w-[56px] max-w-[64px]">
                                 <div class="flex items-center justify-center space-x-0.5">
-                                    <input type="number" id="score-${escapeHTML(std.id)}-${escapeHTML(task.id)}" min="0" max="${task.maxScore}" value="${displayVal}" placeholder="${placeholderStr}"
+                                    <input type="number" id="score-${escapeHTML(std.id)}-${escapeHTML(task.id)}" data-score-column="task:${escapeHTML(task.id)}" inputmode="decimal" autocomplete="off" aria-label="${escapeHTML(std.name)}: ${escapeHTML(task.name)} เต็ม ${task.maxScore}" step="any" min="0" max="${task.maxScore}" value="${displayVal}" placeholder="${placeholderStr}"
                                         class="w-8 sm:w-10 text-center border-[1.5px] ${inputStyles} text-xs py-1 font-black focus:outline-none transition-all"
                                         onchange="updateScore('${escapeHTML(std.id)}', '${escapeHTML(task.id)}', this.value)">
                                     <button id="btn-score-${escapeHTML(std.id)}-${escapeHTML(task.id)}" onclick="toggleSubmitStatus('${escapeHTML(std.id)}', '${escapeHTML(task.id)}')"
@@ -2279,7 +2539,7 @@
                 fixedInputs.forEach((f) => {
                     const v = f.val !== undefined && f.val !== null ? f.val : '';
                     const inStyle = v !== '' ? 'border-[#454955] text-[#0D0A0B] bg-[#D8D6DE] shadow-[1.5px_1.5px_0px_#0D0A0B]' : 'border-[#454955]/60 border-dashed bg-[#F3EFF5] text-[#0D0A0B]';
-                    tbHTML += `<td style="background-color: ${f.bg};" class="px-1 py-1.5 border-r-[1.5px] border-b-[1.5px] border-[#454955] text-center"><input type="number" id="fixed-${escapeHTML(std.id)}-${f.key}" min="0" max="${f.max}" value="${v}" class="w-10 sm:w-11 text-center border-[1.5px] ${inStyle} py-1 font-black text-xs focus:outline-none transition-all" onchange="updateFixedScore('${escapeHTML(std.id)}', '${f.key}', this.value, ${f.max})"></td>`;
+                    tbHTML += `<td style="background-color: ${f.bg};" class="px-1 py-1.5 border-r-[1.5px] border-b-[1.5px] border-[#454955] text-center"><input type="number" id="fixed-${escapeHTML(std.id)}-${f.key}" data-score-column="fixed:${f.key}" inputmode="decimal" autocomplete="off" aria-label="${escapeHTML(std.name)}: ${{attendance: 'จิตพิสัย', midterm: 'กลางภาค', final: 'ปลายภาค'}[f.key]} เต็ม ${f.max}" step="any" min="0" max="${f.max}" value="${v}" class="w-10 sm:w-11 text-center border-[1.5px] ${inStyle} py-1 font-black text-xs focus:outline-none transition-all" onchange="updateFixedScore('${escapeHTML(std.id)}', '${f.key}', this.value, ${f.max})"></td>`;
                 });
 
                 tbHTML += `<td id="bonus-container-${escapeHTML(std.id)}" class="px-1 py-1.5 border-r-[2px] border-b-[1.5px] border-[#454955] bg-[#F3EFF5] text-center"><div class="flex items-center justify-center"><button onclick="openBehaviorModal('${escapeHTML(std.id)}')" class="bg-[#D8D6DE] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] font-black text-[10px] px-2 py-1 border-[1.5px] border-[#454955] cursor-pointer flex items-center gap-1"><span>🌟</span><span>${stat.bonus}</span></button></div></td>`;
@@ -2300,6 +2560,8 @@
                 tbHTML = `<tr><td colspan="15" class="text-center py-16 text-[#0D0A0B] font-black bg-[#F3EFF5] border-b-[2px] border-[#454955]">ยังไม่มีรายชื่อนักเรียนในห้องนี้</td></tr>`;
             }
             bodyEl.innerHTML = tbHTML;
+            applyTeacherFilters();
+            updateMobileGradebookOptions(cls);
 
             if (typeof updateTaskClassCheckboxes === 'function') updateTaskClassCheckboxes();
             if (typeof renderQuizList === 'function') renderQuizList();
@@ -2339,7 +2601,7 @@
             let printWindow = window.open('', '_blank');
 
             let htmlDoc = `<!DOCTYPE html>
-            <html lang="th">
+            <html lang="th" data-hs-motion="${document.documentElement.dataset.hsMotion || 'reduced'}">
             <head>
                 <meta charset="UTF-8">
                 <title>QR Student Cards - ห้อง ${escapeHTML(cls.name)}</title>
@@ -2393,6 +2655,12 @@
                         padding: 5px 12px; width: 84%; font-size: 13px; font-weight: 800;
                         text-align: center; letter-spacing: 1px;
                     }
+                    @media screen and (hover:hover) and (pointer:fine) {
+                        html[data-hs-motion="full"] .card:hover .card-asterisk { animation:qr-mark-turn .75s ease-out; }
+                        .card:hover { box-shadow:7px 7px 0 #0D0A0B; }
+                    }
+                    @keyframes qr-mark-turn { from { transform:rotate(-14deg); } to { transform:rotate(346deg); } }
+                    @media print { .card-asterisk { animation:none !important; transform:rotate(-14deg) !important; } .card { box-shadow:5px 5px 0 #0D0A0B !important; } }
                     .hint {
                         width: 100%; font-size: 11px; font-weight: 800; background: #D8D6DE; color: #0D0A0B;
                         padding: 7px 0; border-top: 2.5px solid #0D0A0B; text-align: center; text-transform: uppercase; letter-spacing: 1px;
@@ -2892,6 +3160,7 @@
             void resultEl.offsetWidth;
             resultEl.classList.add('result-reveal');
             toggleBodyScroll();
+            window.HongSonMotion?.result();
         }
 
         function clearStudentCodeError() {
@@ -2964,6 +3233,7 @@
         }
 
         function logoutStudent() {
+            studentTaskFilter = 'all';
             studentVisitBaselines.clear();
             loggedInStudentId = null;
             loggedInStudentUniqueId = null;
@@ -2976,10 +3246,53 @@
             const currentUrl = window.location.href.split('?')[0];
             window.history.replaceState({}, document.title, currentUrl);
             toggleBodyScroll();
+            window.HongSonMotion?.lookup();
         }
 
 
+        let studentTaskFilter = 'all';
         const studentVisitBaselines = new Map();
+
+        function showStudentTaskFilter(status, scroll = false) {
+            studentTaskFilter = ['all', 'missing', 'pending', 'graded'].includes(status) ? status : 'all';
+            const rows = Array.from(document.querySelectorAll('#res-tasks-list .student-task-row'));
+            let visible = 0;
+            rows.forEach(row => {
+                row.hidden = studentTaskFilter !== 'all' && row.dataset.status !== studentTaskFilter;
+                if (!row.hidden) visible++;
+            });
+            document.querySelectorAll('[data-task-filter]').forEach(button => {
+                button.setAttribute('aria-pressed', String(button.dataset.taskFilter === studentTaskFilter));
+            });
+            document.getElementById('res-task-filter-count').textContent = 'แสดง ' + visible + ' / ' + rows.length + ' งาน';
+            const empty = document.getElementById('res-task-filter-empty');
+            empty.hidden = visible > 0;
+            empty.textContent = !rows.length ? 'คุณครูยังไม่ได้เพิ่มชิ้นงาน' :
+                ({missing:'ไม่มีงานค้างส่งแล้ว ✓', pending:'ไม่มีงานที่รอตรวจ', graded:'ยังไม่มีงานที่ตรวจให้คะแนนแล้ว'}[studentTaskFilter] || 'ยังไม่มีชิ้นงาน');
+            if (scroll) document.getElementById('res-tasks-section').scrollIntoView({
+                behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block:'start'
+            });
+        }
+
+        function studentTaskStatusIcon(status) {
+            const names = {missing:'alert', pending:'clock', graded:'check'};
+            const name = names[status] || 'alert';
+            return '<svg class="ui-icon status-mini icon-' + name + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-' + name + '"></use></svg>';
+        }
+
+        function renderStudentAssignments(std, cls) {
+            const labels = {missing:'ยังไม่ส่ง', pending:'ส่งแล้ว รอตรวจ', graded:'ตรวจให้คะแนนแล้ว'};
+            document.getElementById('res-tasks-list').innerHTML = cls.assignments.map((task, index) => {
+                const value = std.scores && std.scores[task.id];
+                const status = assignmentStatus(value);
+                const detail = status === 'missing' ? 'ติดตามส่งงานกับคุณครู' : status === 'pending' ? 'รอคุณครูตรวจ คะแนนจะเพิ่มเมื่อให้คะแนนแล้ว' : 'คะแนนที่ครูบันทึกไว้ในระบบ';
+                const score = status === 'graded' ? '<div class="student-task-score">' + escapeHTML(String(value)) + ' <small>/ ' + escapeHTML(String(task.maxScore)) + '</small></div>' : '';
+                return '<div class="student-task-row" data-status="' + status + '" data-motion-task="' + escapeHTML(String(task.id)) + '"><div><span class="student-task-status" data-status="' + status + '">' + studentTaskStatusIcon(status) + labels[status] + '</span>' +
+                    '<div class="student-task-title">' + (index + 1) + '. ' + escapeHTML(task.name) + '</div><p class="student-task-detail">' + detail + ' • เต็ม ' + escapeHTML(String(task.maxScore)) + ' คะแนน</p></div>' + score + '</div>';
+            }).join('');
+            showStudentTaskFilter(studentTaskFilter);
+            window.HongSonMotion?.tasks();
+        }
 
         function studentScoreSnapshot(std, cls) {
             const fields = (cls.assignments || []).map(task => ({
@@ -3004,6 +3317,11 @@
             const pending = tasks.filter(task => std.scores && std.scores[task.id] === 'submitted');
             document.getElementById('res-missing-count').textContent = missing.length + ' งาน';
             document.getElementById('res-pending-count').textContent = pending.length + ' งาน';
+            const gradedCount = tasks.length - missing.length - pending.length;
+            document.getElementById('res-graded-count').textContent = gradedCount + ' งาน';
+            document.getElementById('res-submission-progress').textContent = 'ส่งแล้ว ' + (tasks.length - missing.length) + ' / ' + tasks.length + ' งาน • ตรวจแล้ว ' + gradedCount + ' งาน';
+            document.getElementById('res-next-step-title').textContent = !tasks.length ? 'รอคุณครูเพิ่มชิ้นงาน' : missing.length ? 'สิ่งที่ควรทำต่อ: ส่งงานที่ค้าง ' + missing.length + ' งาน' : pending.length ? 'ส่งงานครบแล้ว เหลือรอตรวจ ' + pending.length + ' งาน' : 'ส่งงานครบและตรวจให้คะแนนแล้วทุกงาน';
+            document.getElementById('res-next-step-detail').textContent = missing.length ? 'แตะ “งานที่ยังไม่ส่ง” เพื่อดูรายการที่ต้องติดตาม' : pending.length ? 'งานที่รอตรวจยังไม่รวมคะแนนในยอดสะสม' : !tasks.length ? 'เมื่อครูเพิ่มงาน รายการจะแสดงในหน้านี้' : 'ตรวจคะแนนรายชิ้นงานด้านล่าง หากมีข้อสงสัยให้ติดต่อคุณครู';
             document.getElementById('res-missing-card').dataset.attention = String(missing.length > 0);
             document.getElementById('res-missing-preview').textContent = tasks.length === 0
                 ? 'คุณครูยังไม่ได้เพิ่มชิ้นงาน'
@@ -3057,16 +3375,17 @@
             const imgEl = document.getElementById('res-avatar');
             imgEl.src = avatar; imgEl.setAttribute('data-fallback', fallbackSvg); imgEl.onerror = function() { this.onerror=null; this.src=this.getAttribute('data-fallback'); }; imgEl.onclick = function() { viewImage(this.src); };
 
-            document.getElementById('res-class').innerText = `${escapeHTML(cls.name)} • เลขที่ ${std.no}`;
-            document.getElementById('res-name').innerText = escapeHTML(std.name);
-            document.getElementById('res-id').innerText = escapeHTML(std.studentId);
+            document.getElementById('res-class').textContent = `${cls.name} • เลขที่ ${std.no}`;
+            document.getElementById('res-name').textContent = std.name;
+            document.getElementById('res-id').textContent = std.studentId;
             document.getElementById('res-grade').innerText = stat.grade; document.getElementById('res-score-assign').innerText = stat.assignRawSum; document.getElementById('res-score-att').innerText = stat.att;
-            document.getElementById('res-score-mid').innerText = stat.mid; document.getElementById('res-score-fin').innerText = stat.fin; document.getElementById('res-score-bonus').innerText = `+${stat.bonus}`;
+            document.getElementById('res-score-mid').innerText = stat.mid; document.getElementById('res-score-fin').innerText = stat.fin; document.getElementById('res-score-bonus').innerText = `+${Math.round((stat.bonus + stat.gachaBonus) * 100) / 100}`;
+            document.getElementById('res-bonus-detail').textContent = 'จากครู ' + stat.bonus + ' • กิจกรรม ' + Math.round(stat.gachaBonus * 100) / 100;
             const gstat = calculateGachaRawBonus(std);
             if (document.getElementById('res-gacha-raw-pts')) document.getElementById('res-gacha-raw-pts').innerText = `+${gstat.total.toFixed(2)}`; document.getElementById('res-score-total').innerText = stat.total;
 
             const bar = document.getElementById('res-progress-bar');
-            bar.style.width = stat.total + '%'; if(stat.total < 50) bar.style.backgroundColor = '#0D0A0B'; else if(stat.total < 70) bar.style.backgroundColor = '#D8D6DE'; else bar.style.backgroundColor = '#3F7D20';
+            bar.style.width = stat.total + '%';
 
             // 🛡️ Render Behavior Badges Collection
             if (!std.badges) std.badges = {};
@@ -3107,101 +3426,7 @@
                 warningEl.classList.add('hidden');
             }
 
-            let tHTML = '';
-            if (cls.assignments.length === 0) {
-                tHTML = '<div class="text-sm text-[#0D0A0B] text-center py-8 bg-[#F3EFF5] rounded-none border-[2.5px] border-[#454955] font-black shadow-[4px_4px_0px_#0D0A0B] uppercase">ยังไม่มีรายการชิ้นงานในวิชานี้</div>';
-            } else {
-                let submittedCount = 0;
-                let missingCount = 0;
-                cls.assignments.forEach(task => {
-                    const s = std.scores ? std.scores[task.id] : null;
-                    if (s !== null && s !== undefined && s !== "") submittedCount++;
-                    else missingCount++;
-                });
-
-                // Minimal Earth-Tone Summary Bar
-                tHTML += `
-                <div class="flex flex-wrap items-center justify-between gap-2 pb-2 mb-1">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <span class="inline-flex items-center gap-1.5 bg-[#B6D88A] text-[#0D0A0B] border-[2px] border-[#454955] px-3 py-1 text-xs font-black shadow-[2px_2px_0px_#0D0A0B]">
-                            <span class="w-2.5 h-2.5 bg-[#3F7D20] border border-[#454955] inline-block"></span>
-                            ส่งแล้ว ${submittedCount} งาน
-                        </span>
-                        <span class="inline-flex items-center gap-1.5 ${missingCount > 0 ? 'bg-[#F5DCD6] text-[#6E1E12] border-[#7F2B1D] shadow-[2px_2px_0px_#7F2B1D]' : 'bg-[#F3EFF5] text-[#0D0A0B]/60 border-[#454955]/40'} border-[2px] px-3 py-1 text-xs font-black">
-                            <span class="w-2.5 h-2.5 ${missingCount > 0 ? 'bg-[#A93826]' : 'bg-[#D8D6DE]'} border border-[#454955] inline-block"></span>
-                            ค้างส่ง ${missingCount} งาน
-                        </span>
-                    </div>
-                    <span class="text-[11px] font-bold text-[#0D0A0B]/70">ทั้งหมด ${cls.assignments.length} ชิ้นงาน</span>
-                </div>`;
-
-                cls.assignments.forEach((task, idx) => {
-                    const score = std.scores ? std.scores[task.id] : null;
-                    const isPending = score === "submitted";
-                    const hasScore = score !== null && score !== undefined && score !== "" && !isPending;
-
-                    if (hasScore) {
-                        // Earth-Tone Sage & Botanical Forest Green (ส่งแล้ว / ตรวจแล้ว)
-                        tHTML += `
-                        <div class="flex flex-col sm:flex-row justify-between sm:items-center bg-[#B6D88A] p-3.5 sm:p-4 rounded-none border-[2.5px] border-[#454955] gap-3 shadow-[4px_4px_0px_#0D0A0B] transition-all hover:-translate-y-0.5">
-                            <div class="flex items-center gap-3 min-w-0">
-                                <div class="w-9 h-9 bg-[#72B01D] text-[#0D0A0B] border-[2px] border-[#454955] shadow-[2px_2px_0px_#0D0A0B] flex items-center justify-center font-black text-base shrink-0">✓</div>
-                                <div class="min-w-0">
-                                    <div class="flex items-center gap-2 flex-wrap">
-                                        <span class="text-[10px] font-black bg-[#72B01D] text-[#0D0A0B] px-1.5 py-0.5 border border-[#454955]">งานที่ ${idx + 1}</span>
-                                        <span class="text-[#0D0A0B] font-black text-sm sm:text-base uppercase truncate">${escapeHTML(task.name)}</span>
-                                    </div>
-                                    <p class="text-[11px] font-bold text-[#3B741D] mt-0.5">✓ ส่งงานแล้ว • ตรวจให้คะแนนเรียบร้อย</p>
-                                </div>
-                            </div>
-                            <div class="flex items-center justify-end gap-2 shrink-0 self-end sm:self-center">
-                                <span class="text-[10px] font-black text-[#FFFFFF] bg-[#3F7D20] px-2.5 py-1 border-[1.5px] border-[#454955] shadow-[2px_2px_0px_#0D0A0B] uppercase tracking-wider">✓ ส่งแล้ว (GRADED)</span>
-                                <div class="bg-[#F3EFF5] border-[2px] border-[#454955] px-3 py-1 shadow-[2px_2px_0px_#0D0A0B] flex items-baseline gap-1">
-                                    <span class="text-[#3B741D] font-black text-lg sm:text-xl leading-none">${score}</span>
-                                    <span class="text-xs font-bold text-[#0D0A0B]/70">/ ${task.maxScore}</span>
-                                </div>
-                            </div>
-                        </div>`;
-                    } else if (isPending) {
-                        // Earth-Tone Warm Amber Ochre (ส่งแล้ว รอครูตรวจ)
-                        tHTML += `
-                        <div class="flex flex-col sm:flex-row justify-between sm:items-center bg-[#D8D6DE] p-3.5 sm:p-4 rounded-none border-[2.5px] border-[#454955] gap-3 shadow-[4px_4px_0px_#0D0A0B] transition-all hover:-translate-y-0.5">
-                            <div class="flex items-center gap-3 min-w-0">
-                                <div class="w-9 h-9 bg-[#B86B1B] text-[#F3EFF5] border-[2px] border-[#454955] shadow-[2px_2px_0px_#0D0A0B] flex items-center justify-center font-black text-base shrink-0">⏳</div>
-                                <div class="min-w-0">
-                                    <div class="flex items-center gap-2 flex-wrap">
-                                        <span class="text-[10px] font-black bg-[#D8D6DE] text-[#0D0A0B] px-1.5 py-0.5 border border-[#454955]">งานที่ ${idx + 1}</span>
-                                        <span class="text-[#0D0A0B] font-black text-sm sm:text-base uppercase truncate">${escapeHTML(task.name)}</span>
-                                    </div>
-                                    <p class="text-[11px] font-bold text-[#8C4F12] mt-0.5">⏳ ส่งงานแล้ว • รอคุณครูตรวจให้คะแนน</p>
-                                </div>
-                            </div>
-                            <div class="flex items-center justify-end gap-2 shrink-0 self-end sm:self-center">
-                                <span class="text-[11px] font-black bg-[#B86B1B] text-[#F3EFF5] px-3 py-1.5 border-[2px] border-[#454955] shadow-[2px_2px_0px_#0D0A0B] uppercase tracking-wider">⏳ รอตรวจ (WAITING)</span>
-                            </div>
-                        </div>`;
-                    } else {
-                        // Minimal Earth-Tone Terracotta Clay Red (ยังไม่ได้ส่ง / ค้างส่ง)
-                        tHTML += `
-                        <div class="flex flex-col sm:flex-row justify-between sm:items-center bg-[#F5DCD6] p-3.5 sm:p-4 rounded-none border-[2.5px] border-[#7F2B1D] gap-3 shadow-[4px_4px_0px_#7F2B1D] transition-all hover:-translate-y-0.5">
-                            <div class="flex items-center gap-3 min-w-0">
-                                <div class="w-9 h-9 bg-[#A93826] text-[#F3EFF5] border-[2px] border-[#454955] shadow-[2px_2px_0px_#0D0A0B] flex items-center justify-center font-black text-base shrink-0">!</div>
-                                <div class="min-w-0">
-                                    <div class="flex items-center gap-2 flex-wrap">
-                                        <span class="text-[10px] font-black bg-[#A93826] text-[#F3EFF5] px-1.5 py-0.5 border border-[#454955]">งานที่ ${idx + 1}</span>
-                                        <span class="text-[#6E1E12] font-black text-sm sm:text-base uppercase truncate">${escapeHTML(task.name)}</span>
-                                    </div>
-                                    <p class="text-[11px] font-bold text-[#A93826] mt-0.5">✕ ยังไม่ได้ส่งงาน • กรุณาติดตามส่งคุณครู (เต็ม ${task.maxScore} คะแนน)</p>
-                                </div>
-                            </div>
-                            <div class="flex items-center justify-end gap-2 shrink-0 self-end sm:self-center">
-                                <span class="text-[11px] font-black bg-[#A93826] text-[#F3EFF5] px-3 py-1.5 border-[2px] border-[#454955] shadow-[2px_2px_0px_#0D0A0B] uppercase tracking-wider">✕ ยังไม่ส่ง (MISSING)</span>
-                            </div>
-                        </div>`;
-                    }
-                });
-            }
-            document.getElementById('res-tasks-list').innerHTML = tHTML;
+            renderStudentAssignments(std, cls);
             renderStudentAquarium(std, cls);
         }
 
@@ -3344,6 +3569,13 @@
         }
 
         function refreshDataWithLoading() {
+            const button = document.getElementById('cloud-refresh-button');
+            // Click feedback remains visible even when the online read finishes quickly.
+            clearTimeout(button.refreshIconTimer);
+            button.classList.remove('refresh-click-turn');
+            void button.offsetWidth;
+            button.classList.add('refresh-click-turn');
+            button.refreshIconTimer = setTimeout(() => button.classList.remove('refresh-click-turn'), 800);
             return runWithLoading('กำลังโหลดคะแนนล่าสุด', () => loadDataFromCloud());
         }
 
@@ -3436,12 +3668,12 @@
             mobBtns.forEach(b => {
                 const el = document.getElementById(b);
                 if(el) {
-                    el.className = "flex-grow py-2.5 text-xs font-black transition-all bg-[#F3EFF5] text-[#0D0A0B]   border-[3px] border-[#454955]  shadow-[2px_2px_0px_#0D0A0B]  flex flex-col items-center justify-center";
+                    el.removeAttribute('aria-current');
                 }
             });
             const activeMobBtn = document.getElementById(`btn-mob-${view}`);
             if(activeMobBtn) {
-                activeMobBtn.className = "flex-grow py-2.5 text-xs font-black transition-all bg-[#0D0A0B] text-[#F3EFF5]   border-[3px] border-[#454955]  shadow-[2px_2px_0px_#0D0A0B]  flex flex-col items-center justify-center";
+                activeMobBtn.setAttribute('aria-current', 'page');
             }
 
             if (view === 'student' && loggedInStudentUniqueId) {
@@ -3453,6 +3685,7 @@
             if (view === 'dashboard') { populateDashDropdown(); renderDashboard(); }
             if (view === 'teacher') { renderTeacherView(); }
             toggleBodyScroll();
+            window.HongSonMotion?.workspace();
         }
 
         function openBehaviorModal(stdId) {
@@ -4470,6 +4703,7 @@ JSON Structure:
                 </button>`;
             });
             document.getElementById('qa-choices-container').innerHTML = choicesHtml;
+            window.HongSonExtras?.question();
         }
 
         async function submitQuizAnswer(quizId, selectedIdx) {
@@ -4534,6 +4768,7 @@ JSON Structure:
             if (expTextEl) {
                 expTextEl.innerText = q.explanation || `คำเฉลยคือตัวเลือกที่ ${q.correctIndex + 1}`;
             }
+            window.HongSonExtras?.quizResult(isCorrect, Boolean(student));
         }
 
         function goToNextQuiz() {
@@ -5303,7 +5538,8 @@ JSON Structure:
         // Initialize once; returning to this page triggers a fresh Sheet read.
         async function initializeCloudData() {
             initSupabaseClient(); // Show which database this installation uses; no second sync engine.
-            await runWithLoading('กำลังโหลดข้อมูลคะแนน', loadDataFromCloud, 100);
+            // Initial reads use the header status so the landing page stays visible.
+            await loadDataFromCloud();
         }
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initializeCloudData, { once: true });
@@ -5341,8 +5577,23 @@ JSON Structure:
         document.addEventListener('keydown', event => {
             if (event.key === 'Enter' && event.target.matches('#teacher-gradebook-table input[type="number"]')) {
                 event.preventDefault();
-                event.target.blur(); // Commit the same change path as tapping outside the score cell.
+                const input = event.target;
+                if (event.isComposing) return;
+                if (input.validity.badInput || input.validity.customError) { input.reportValidity(); return; }
+                const fields = Array.from(document.querySelectorAll('#teacher-gradebook-table input[data-score-column]'))
+                    .filter(field => !field.closest('tr').hidden && field.dataset.scoreColumn === input.dataset.scoreColumn);
+                const next = fields[fields.indexOf(input) + (event.shiftKey ? -1 : 1)];
+                input.blur(); // Keep the existing onchange save path.
+                if (input.validity.customError) { input.focus(); return; }
+                if (next) { next.focus({preventScroll:true}); next.select(); next.scrollIntoView({block:'nearest',inline:'nearest'}); }
             }
+        });
+        // Refilter only the DOM after entry; never recreate a focused score input.
+        document.addEventListener('change', event => {
+            if (event.target.matches('#teacher-gradebook-table input[type="number"]')) setTimeout(() => applyTeacherFilters(true), 0);
+        });
+        document.addEventListener('focusout', event => {
+            if (event.target.closest('#teacher-gradebook-table')) setTimeout(() => applyTeacherFilters(true), 0);
         });
         document.addEventListener('input', event => {
             cloudEditRevision++;
@@ -5358,22 +5609,23 @@ JSON Structure:
 
 </script>
 
-    <!-- 📱 Bottom Navigation Bar for Mobile (Fixed bottom tabs) -->
-    <div class="fixed bottom-0 left-0 right-0 bg-[#D8D6DE]  border-t-[4px] border-[#454955]  flex justify-around items-center h-18 z-[100] md:hidden px-2 pb-1.5 pt-1">
-        <button onclick="switchView('student')" id="btn-mob-student" class="flex-grow py-2.5 text-xs font-black transition-all bg-[#0D0A0B] text-[#F3EFF5] border-[3px] border-[#454955]  shadow-[2px_2px_0px_#0D0A0B]  flex flex-col items-center justify-center">
-            <span class="text-base">👨‍🎓</span>
-            <span class="text-[9px] mt-0.5 tracking-wider">นักเรียน</span>
-        </button>
-        <button onclick="switchView('dashboard')" id="btn-mob-dashboard" class="flex-grow py-2.5 text-xs font-black transition-all bg-[#F3EFF5] text-[#0D0A0B]   border-[3px] border-[#454955]  shadow-[2px_2px_0px_#0D0A0B]  flex flex-col items-center justify-center">
-            <span class="text-base">📊</span>
-            <span class="text-[9px] mt-0.5 tracking-wider">แดชบอร์ด</span>
-        </button>
-        <button onclick="checkAdminAccess()" id="btn-mob-teacher" class="flex-grow py-2.5 text-xs font-black transition-all bg-[#F3EFF5] text-[#0D0A0B]   border-[3px] border-[#454955]  shadow-[2px_2px_0px_#0D0A0B]  flex flex-col items-center justify-center">
-            <span class="text-base">⚙️</span>
-            <span class="text-[9px] mt-0.5 tracking-wider">ระบบครู</span>
-        </button>
-    </div>
-
+    <!-- Mobile navigation: one frame, three equal sections. -->
+    <nav id="mobile-nav" aria-label="เมนูหลัก" class="fixed bottom-0 left-0 right-0 z-[100] md:hidden">
+        <div class="mobile-nav-track">
+            <button type="button" onclick="switchView('student')" id="btn-mob-student" class="mobile-nav-item" aria-current="page">
+                <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m3 9 9-5 9 5-9 5-9-5Z"/><path d="M7 11.2V16c2.8 2.7 7.2 2.7 10 0v-4.8M21 9v7"/></svg>
+                <span>นักเรียน</span>
+            </button>
+            <button type="button" onclick="switchView('dashboard')" id="btn-mob-dashboard" class="mobile-nav-item">
+                <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path class="nav-chart-bar" d="M5 18v-5"/><path class="nav-chart-bar" d="M12 18V5"/><path class="nav-chart-bar" d="M19 18V9"/><path d="M3 21h18"/></svg>
+                <span>สถิติ</span>
+            </button>
+            <button type="button" onclick="checkAdminAccess()" id="btn-mob-teacher" class="mobile-nav-item">
+                <svg class="mobile-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 4h18v12H3zM7 21l3-5M17 21l-3-5M12 16v5"/><path class="nav-board-writing" d="M7 8h5M7 11h9"/></svg>
+                <span>ครู</span>
+            </button>
+        </div>
+    </nav>
 
 <!-- ☁️ Supabase Cloud Configuration Modal (Phase 1) -->
     <div id="supabase-modal" class="fixed inset-0 z-[120] hidden items-center justify-center bg-[#0D0A0B]/90 backdrop-blur-md px-4 py-6">

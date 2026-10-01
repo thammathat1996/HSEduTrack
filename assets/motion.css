@@ -1,0 +1,87 @@
+/* HONGSON Motion: student lookup and score presentation, independent of data/storage. */
+.hs-lookup-tag { display:inline-flex !important; align-items:center; gap:6px; background:var(--c-lime) !important; border-color:var(--c-ink) !important; box-shadow:2px 2px 0 var(--c-ink); transform:rotate(-1.5deg); }
+.hs-lookup-tag .ui-icon { width:14px; height:14px; }
+#student-search-panel h2 > span:first-child { position:relative; isolation:isolate; }
+#student-search-panel h2 > span:first-child::after { content:''; position:absolute; z-index:-1; left:0; right:0; bottom:3px; height:8px; background:var(--c-lime); opacity:.3; transform-origin:left; }
+#student-search-panel.hs-lookup-enter h2 > span:first-child::after { animation:hs-marker-reveal .45s .12s ease-out both; }
+#student-search-panel .brand-hero-mark { opacity:.2; animation:hs-hero-orbit 9s linear infinite; animation-play-state:paused; transform-origin:center; }
+#student-search-panel.hs-ambient-active .hs-ambient-visible { animation-play-state:running; }
+.hs-motion-button { transition:transform .14s ease, box-shadow .14s ease, background-color .15s ease; }
+#student-search-panel .hs-search-button:active,
+#student-result .hs-motion-button:active { transform:translate(2px,2px) !important; box-shadow:0 0 0 var(--c-ink) !important; }
+#student-result .student-quick-card { position:relative; transition:transform .16s ease, box-shadow .16s ease; }
+#student-result .student-quick-card:focus-visible { transform:translateY(-2px); box-shadow:3px 3px 0 var(--c-ink); }
+#student-result #res-grade-card { position:relative; }
+.hs-grade-spark { position:absolute; top:-8px; right:-7px; width:19px; height:19px; fill:var(--c-lime); stroke:var(--c-ink); stroke-width:7; pointer-events:none; }
+#res-score-total { position:relative; transform-origin:center; }
+#res-score-total::after { content:''; position:absolute; left:0; right:0; bottom:-4px; height:3px; background:var(--c-lime); }
+html.hs-motion-ready #res-progress-bar { transition:none; transform-origin:left center; }
+#res-progress-bar::after { content:''; position:absolute; inset:0; background:repeating-linear-gradient(135deg,transparent 0 9px,rgba(243,239,245,.12) 9px 12px); pointer-events:none; }
+#res-progress-bar { position:relative; }
+#student-result .student-score-breakdown > div { transition:transform .16s ease, border-color .16s ease; }
+#student-result .student-task-row { position:relative; transition:border-color .16s ease, box-shadow .16s ease; }
+#student-result .student-task-filters button { transition:transform .14s ease, box-shadow .14s ease, background-color .14s ease, color .14s ease; }
+#student-result .student-task-filters button[aria-pressed=true] { border-color:var(--c-ink); }
+#student-result .student-update-box summary { transition:color .15s ease; }
+#student-result .student-update-box[open] summary { color:var(--c-green); }
+html.hs-motion-ready #student-view.view-reveal,
+html.hs-motion-ready #student-result.result-reveal { animation:none; }
+
+@keyframes hs-marker-reveal { from { transform:scaleX(0); } to { transform:scaleX(1); } }
+@keyframes hs-hero-orbit { from { transform:rotate(-14deg); } to { transform:rotate(346deg); } }
+@keyframes hs-brand-spin { from { transform:rotate(-14deg); } to { transform:rotate(346deg); } }
+
+@media (hover:hover) and (pointer:fine) {
+  .app-brand:hover .brand-spark--nav { animation:hs-brand-spin .75s ease-out; }
+  #student-search-panel .hs-search-button:hover { transform:translate(-1px,-1px); box-shadow:4px 4px 0 var(--c-ink); }
+  #student-result .student-quick-card:hover { transform:translateY(-2px); box-shadow:3px 3px 0 var(--c-ink); }
+  #student-result .student-score-breakdown > div:hover { transform:translateY(-2px); border-color:var(--c-green); }
+  #student-result .student-task-row:hover { border-color:var(--c-green); box-shadow:3px 3px 0 var(--c-ink); }
+  #student-result .student-task-row[data-status=missing]:hover { border-color:#7F2B1D; }
+}
+@media (max-width:767px) {
+  #student-search-panel h2 > span:first-child::after { height:6px; }
+  .hs-grade-spark { width:16px; height:16px; top:-7px; right:-5px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  html:not([data-hs-motion="full"]) #student-search-panel .brand-hero-mark,
+  html:not([data-hs-motion="full"]) #student-search-panel h2 > span:first-child::after,
+  html:not([data-hs-motion="full"]) .app-brand .brand-spark--nav { animation:none !important; }
+  html:not([data-hs-motion="full"]) #student-result .hs-motion-button,
+  html:not([data-hs-motion="full"]) #student-result .student-quick-card,
+  html:not([data-hs-motion="full"]) #student-result .student-task-row,
+  html:not([data-hs-motion="full"]) #student-result .student-score-breakdown > div,
+  html:not([data-hs-motion="full"]) #student-result .student-task-filters button,
+  html:not([data-hs-motion="full"]) #student-search-panel .hs-search-button { transition:none !important; }
+  html:not([data-hs-motion="full"]) #student-result .student-quick-card:hover,
+  html:not([data-hs-motion="full"]) #student-result .student-score-breakdown > div:hover,
+  html:not([data-hs-motion="full"]) #student-search-panel .hs-search-button:hover { transform:none; }
+}
+
+/* A per-page choice; scores and browser/Windows preferences are never stored or changed. */
+  html[data-hs-motion="reduced"] #student-search-panel .brand-hero-mark,
+  html[data-hs-motion="reduced"] #student-search-panel h2 > span:first-child::after,
+  html[data-hs-motion="reduced"] .app-brand .brand-spark--nav { animation:none !important; }
+  html[data-hs-motion="reduced"] #student-result .hs-motion-button,
+  html[data-hs-motion="reduced"] #student-result .student-quick-card,
+  html[data-hs-motion="reduced"] #student-result .student-task-row,
+  html[data-hs-motion="reduced"] #student-result .student-score-breakdown > div,
+  html[data-hs-motion="reduced"] #student-result .student-task-filters button,
+  html[data-hs-motion="reduced"] #student-search-panel .hs-search-button { transition:none !important; }
+  html[data-hs-motion="reduced"] #student-result .student-quick-card:hover,
+  html[data-hs-motion="reduced"] #student-result .student-score-breakdown > div:hover,
+  html[data-hs-motion="reduced"] #student-search-panel .hs-search-button:hover { transform:none; }
+
+.hs-motion-toggle { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:32px; padding:4px 8px; border:1.5px solid var(--c-slate); background:var(--c-paper); color:var(--c-green); font:inherit; font-size:10px; font-weight:800; cursor:pointer; white-space:nowrap; }
+.hs-motion-toggle[aria-pressed=true] { background:var(--c-lime); color:var(--c-ink); box-shadow:2px 2px 0 var(--c-ink); }
+.hs-motion-toggle .ui-icon { width:15px; height:15px; }
+.hs-motion-toggle:focus-visible { outline:3px solid var(--c-green); outline-offset:3px; }
+@media (max-width:767px) { .hs-motion-toggle { min-height:44px; min-width:44px; padding:5px 7px; font-size:10px; } }
+@media (max-width:359px) { .hs-motion-toggle > span { display:none; } }
+html[data-hs-motion=reduced] .ui-icon:not(.icon-spinner),
+html[data-hs-motion=reduced] .mobile-nav-icon,
+html[data-hs-motion=reduced] .nav-chart-bar,
+html[data-hs-motion=reduced] .nav-board-writing { animation:none !important; transform:none !important; stroke-dashoffset:0 !important; }
+html[data-hs-motion=reduced] .icon-spinner { animation-duration:2s !important; }
+html[data-hs-motion=reduced] #cloud-refresh-button > span:first-child { animation:none !important; }
+html[data-hs-motion=reduced] #cloud-refresh-panel[data-state=loading] #cloud-refresh-button > span:first-child { animation:refresh-turn 2s linear infinite !important; }

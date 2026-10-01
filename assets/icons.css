@@ -1,0 +1,77 @@
+/* Lightweight SVG motion. All icons are bundled inline; no remote icon library. */
+.ui-icon { display:inline-block; width:18px; height:18px; flex-shrink:0; vertical-align:middle; pointer-events:none; transform-origin:center; }
+.mobile-nav-icon { pointer-events:none; transform-origin:center; }
+#student-search-panel button[onclick="searchStudent()"], .teacher-primary-actions > button, .teacher-more-list button, .student-task-filters button { display:inline-flex; align-items:center; justify-content:center; gap:7px; }
+.teacher-primary-actions > button > span, .teacher-more-list button > span { min-width:0; }
+.teacher-more-tools summary { gap:7px; }
+.student-activity-link .activity-label { display:inline-flex; align-items:center; gap:8px; min-width:0; }
+.student-activity-link .activity-label > span { min-width:0; }
+.student-avatar-edit .ui-icon { width:18px; height:18px; }
+.student-task-filters .ui-icon { width:14px; height:14px; }
+.student-task-status { display:flex; align-items:center; gap:4px; }
+.student-task-status .status-mini { width:12px; height:12px; }
+#cloud-refresh-button > span:first-child { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; line-height:0; transform-origin:center; }
+#cloud-refresh-button.refresh-click-turn > span:first-child { animation:refresh-turn .7s linear; }
+#cloud-refresh-panel[data-state=loading] #cloud-refresh-button > span:first-child { animation:refresh-turn .9s linear infinite; }
+#cloud-refresh-button .ui-icon { width:22px; height:22px; }
+#cloud-refresh-button .cloud-refresh-dot { top:1px; right:1px; width:7px; height:7px; }
+#cloud-refresh-button .refresh-indicator-wait { display:none; }
+#cloud-refresh-panel[data-state=waiting] .refresh-indicator-turn { display:none; }
+#cloud-refresh-panel[data-state=waiting] .refresh-indicator-wait { display:block; }
+#cloud-refresh-panel[data-state=waiting] #cloud-refresh-button > span:first-child { animation:none; }
+.save-feedback::before { display:none; }
+.save-state-glyph { display:flex; align-items:center; justify-content:center; flex:0 0 22px; min-height:22px; }
+.save-state-glyph .ui-icon { display:none; width:22px; height:22px; }
+#teacher-save-feedback[data-state=saving] .icon-spinner,
+#teacher-save-feedback[data-state=verifying] .icon-spinner { display:block; color:var(--c-green); animation:ui-icon-turn .85s linear infinite; }
+#teacher-save-feedback[data-state=saved] .icon-check { display:block; color:var(--c-green); stroke-dasharray:30; animation:ui-icon-draw .5s ease-out both; }
+#teacher-save-feedback[data-state=error] .icon-alert { display:block; color:#9F1D1D; animation:ui-icon-warning .45s ease-out; }
+
+/* Short reactions to a deliberate action, never continuous motion on idle screens. */
+@keyframes ui-icon-turn { to { transform:rotate(360deg); } }
+@keyframes ui-icon-search { 0%,100% { transform:translate(0,0) rotate(0); } 35% { transform:translate(2px,-1px) rotate(-9deg); } 65% { transform:translate(-1px,0) rotate(5deg); } }
+@keyframes ui-icon-nudge { 0%,100% { transform:translateY(0) rotate(0); } 40% { transform:translateY(-2px) rotate(-6deg); } 70% { transform:translateY(-1px) rotate(3deg); } }
+@keyframes ui-icon-pop { 0%,100% { transform:scale(1); } 45% { transform:scale(1.12); } }
+@keyframes ui-icon-pencil { 0%,100% { transform:rotate(0); } 35% { transform:rotate(-12deg); } 65% { transform:rotate(8deg); } }
+@keyframes ui-icon-star { 0%,100% { transform:rotate(0) scale(1); } 45% { transform:rotate(14deg) scale(1.1); } }
+@keyframes ui-icon-download { 0%,100% { transform:translateY(0); } 45% { transform:translateY(3px); } }
+@keyframes ui-icon-draw { from { stroke-dashoffset:30; } to { stroke-dashoffset:0; } }
+@keyframes ui-icon-bars { from { transform:scaleY(.3); } to { transform:scaleY(1); } }
+@keyframes ui-icon-writing { from { stroke-dashoffset:14; } to { stroke-dashoffset:0; } }
+@keyframes ui-icon-warning { 0%,100% { transform:scale(1); } 45% { transform:scale(1.1); } }
+
+#student-search-panel:has(#search-std-id:focus) .icon-search { animation:ui-icon-search .6s ease-out; }
+button:focus-visible > .ui-icon, .student-activity-link:focus-visible .icon-controller,
+summary:focus-visible > .ui-icon { animation:ui-icon-nudge .5s ease-out; }
+.student-avatar-edit:focus-visible .icon-pencil, .student-avatar-edit:active .icon-pencil { animation:ui-icon-pencil .5s ease-out; }
+.teacher-primary-actions > button:active > .ui-icon, .teacher-more-list button:active > .ui-icon { animation:ui-icon-pop .4s ease-out; }
+.student-task-filters button[aria-pressed=true] > .ui-icon { animation:ui-icon-pop .4s ease-out; }
+.teacher-more-tools[open] > summary .icon-tools { animation:ui-icon-nudge .4s ease-out; }
+#btn-mob-student[aria-current=page] .mobile-nav-icon { animation:ui-icon-nudge .55s ease-out; }
+.nav-chart-bar { transform-box:fill-box; transform-origin:50% 100%; }
+#btn-mob-dashboard[aria-current=page] .nav-chart-bar { animation:ui-icon-bars .5s ease-out both; }
+#btn-mob-dashboard[aria-current=page] .nav-chart-bar:nth-child(2) { animation-delay:.06s; }
+#btn-mob-dashboard[aria-current=page] .nav-chart-bar:nth-child(3) { animation-delay:.12s; }
+#btn-mob-teacher[aria-current=page] .nav-board-writing { stroke-dasharray:14; animation:ui-icon-writing .5s ease-out both; }
+
+@media (hover:hover) and (pointer:fine) {
+  #cloud-refresh-panel:not([data-state=loading]):not([data-state=waiting]) #cloud-refresh-button:hover > span:first-child { animation:refresh-turn .7s linear; }
+  button:hover > .ui-icon, summary:hover > .ui-icon { animation:ui-icon-nudge .5s ease-out; }
+  #student-search-panel button:hover .icon-search { animation-name:ui-icon-search; }
+  .student-avatar-edit:hover .icon-pencil { animation-name:ui-icon-pencil; }
+  .teacher-more-list button:hover .icon-star { animation-name:ui-icon-star; }
+  .teacher-more-list button:hover .icon-download { animation-name:ui-icon-download; }
+  .student-activity-link:hover .icon-controller { animation:ui-icon-nudge .5s ease-out; }
+  .student-activity-link:hover .icon-arrow { animation:ui-icon-search .5s ease-out; }
+  .student-task-row:hover .icon-check { stroke-dasharray:30; animation:ui-icon-draw .45s ease-out; }
+  #mobile-nav button:hover .mobile-nav-icon { animation:ui-icon-nudge .5s ease-out; }
+}
+@media (prefers-reduced-motion:reduce) {
+  html:not([data-hs-motion="full"]) #cloud-refresh-panel #cloud-refresh-button > span:first-child { animation:none !important; }
+  /* Retain the previous gentle loading rotation for explicit refresh requests. */
+  html:not([data-hs-motion="full"]) #cloud-refresh-panel[data-state=loading] #cloud-refresh-button > span:first-child { animation:refresh-turn 2s linear infinite !important; }
+  html:not([data-hs-motion="full"]) .ui-icon, html:not([data-hs-motion="full"]) .mobile-nav-icon, html:not([data-hs-motion="full"]) .nav-chart-bar, html:not([data-hs-motion="full"]) .nav-board-writing {
+    animation:none !important; transition:none !important;
+    transform:none !important; stroke-dashoffset:0 !important;
+  }
+}

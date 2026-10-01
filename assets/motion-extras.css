@@ -1,0 +1,45 @@
+/* Rounds 3–4: menus, tools and rewards. Layout and QR pixels stay unchanged. */
+html.hs-extras-ready #dashboard-view.view-reveal,
+html.hs-extras-ready #teacher-view.view-reveal { animation:none; }
+#grade-chart-container > div > div[style*="height:"] { transform-origin:center bottom; }
+#app-header button[id^="btn-nav-"], #mobile-nav button, .teacher-primary-actions > button,
+.teacher-more-list button, #gacha-arcade-modal button { transition:background-color .15s ease,color .15s ease,box-shadow .15s ease; }
+#app-header button[id^="btn-nav-"]:active, .teacher-primary-actions > button:active,
+.teacher-more-list button:active { box-shadow:0 0 0 var(--c-ink); }
+#qa-choices-container button:focus-visible, #gacha-pull-lever-btn:focus-visible,
+#showcase-figures-grid > div[onclick]:focus-visible { outline:3px solid var(--c-green); outline-offset:3px; }
+#qa-choices-container button > span:first-child { transition:background-color .15s ease,color .15s ease; }
+#qa-choices-container button:active > span:first-child { background:var(--c-lime); color:var(--c-ink); }
+#qa-result-icon { display:inline-block; transform-origin:center; }
+.hs-reward-particles { position:fixed; inset:0; z-index:270; overflow:hidden; pointer-events:none; }
+.hs-reward-particles > span { position:absolute; width:9px; height:14px; border:1.5px solid var(--c-ink); pointer-events:none; }
+.hs-reward-particles .hs-particle-star { width:19px; height:19px; border:0; clip-path:polygon(43% 0,57% 0,57% 30%,79% 8%,89% 18%,67% 40%,100% 40%,100% 55%,67% 55%,89% 77%,79% 87%,57% 65%,57% 100%,43% 100%,43% 65%,21% 87%,11% 77%,33% 55%,0 55%,0 40%,33% 40%,11% 18%,21% 8%,43% 30%); }
+#gacha-arcade-modal:not(.hidden) #arc-tab-content-gacha:not(.hidden) #gacha-spheres-container.hs-gacha-busy > span { animation:hs-capsule-mix .65s ease-in-out infinite; }
+#gacha-spheres-container.hs-gacha-busy > span:nth-child(2) { animation-delay:-.16s; }
+#gacha-spheres-container.hs-gacha-busy > span:nth-child(3) { animation-delay:-.32s; }
+#gacha-spheres-container.hs-gacha-busy > span:nth-child(4) { animation-delay:-.48s; }
+#gacha-pull-lever-btn[aria-busy=true] { background:var(--c-panel); color:var(--c-ink); }
+@keyframes hs-capsule-mix { 0%,100% { transform:translateY(0) rotate(0); } 50% { transform:translateY(-10px) rotate(28deg); } }
+@media (hover:hover) and (pointer:fine) {
+  #qa-choices-container button:hover > span:first-child { background:var(--c-lime); color:var(--c-ink); }
+  #showcase-figures-grid > div[onclick]:hover { border-color:var(--c-green); box-shadow:4px 4px 0 var(--c-ink); }
+}
+html.hs-extras-paused #gacha-spheres-container.hs-gacha-busy > span { animation-play-state:paused !important; }
+html[data-hs-motion=reduced] #gacha-spheres-container.hs-gacha-busy > span { animation:none !important; }
+html[data-hs-motion=reduced] .hs-reward-particles { display:none; }
+html[data-hs-motion=reduced] #qa-choices-container button,
+html[data-hs-motion=reduced] #showcase-figures-grid > div { transition:none; }
+html[data-hs-motion=reduced] #qa-choices-container button:hover,
+html[data-hs-motion=reduced] #qa-choices-container button:active,
+html[data-hs-motion=reduced] #showcase-figures-grid > div:hover { transform:none; }
+html.hs-extras-ready #gacha-reveal-modal .anim-pop { animation:none; }
+@media print { .hs-reward-particles { display:none !important; } }
+[id^="arc-tab-btn-"] { display:inline-flex; align-items:center; gap:6px; }
+[id^="arc-tab-btn-"] .ui-icon { width:16px; height:16px; }
+#qa-result-icon .ui-icon { width:32px; height:32px; }
+#gacha-arcade-modal:not(.hidden) #arc-tab-content-gacha:not(.hidden) #gacha-pull-lever-btn[aria-busy=true] > .ui-icon { animation:ui-icon-turn 1s linear infinite; }
+html.hs-extras-paused #gacha-pull-lever-btn[aria-busy=true] > .ui-icon { animation-play-state:paused !important; }
+html[data-hs-motion=reduced] #gacha-pull-lever-btn[aria-busy=true] > .ui-icon { animation:none !important; }
+
+#app-header button[id^="btn-nav-"] { display:inline-flex; align-items:center; gap:5px; }
+#app-header button[id^="btn-nav-"] .ui-icon { width:16px; height:16px; }
