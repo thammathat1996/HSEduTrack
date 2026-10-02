@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>HongSon EduTrack | ตรวจสอบคะแนนนักเรียน</title>
-    <script async src="assets/cloud-read.js" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
+    <script async src="assets/cloud-read.js?v=20261002-1" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
     <link rel="stylesheet" href="assets/app.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -130,13 +130,26 @@
         #qr-reader__dashboard_section_swaplink { display: none !important; }
 
         .progress-bar-fill { transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
-        .student-search-status { display:flex; align-items:center; gap:8px; margin-top:16px; padding:10px 12px; border:1.5px solid var(--c-green); background:var(--c-paper); color:var(--c-green); font-size:12px; font-weight:700; line-height:1.6; }
+        /* Connection failures remain beside search; the wait uses the teacher loader style. */
+        .student-search-status {
+            display:grid; grid-template-columns:52px minmax(0,1fr); gap:12px 16px;
+            margin-top:20px; padding:18px; border:2px solid #C62828;
+            background:#FFF0F0; color:#9F1D1D; box-shadow:4px 4px 0 #9F1D1D;
+        }
         .student-search-status.hidden { display:none; }
-        .student-search-status[data-state="searching"] .icon-spinner { animation:ui-icon-turn .9s linear infinite; }
-        .student-search-status[data-state="error"] { color:#9F1D1D; border-color:#C62828; background:#FFF0F0; }
-        .student-search-status[data-state="error"] .icon-spinner { display:none; }
+        .student-search-art { display:flex; align-items:center; justify-content:center; }
+        .student-search-copy { min-width:0; align-self:center; }
+        .student-search-copy strong { display:block; font-size:17px; font-weight:900; line-height:1.5; }
+        #student-search-message { margin-top:3px; font-size:13px; font-weight:700; line-height:1.7; overflow-wrap:anywhere; }
+        .student-search-error-icon { width:38px; height:38px; }
+        #student-search-status #student-search-retry { display:inline-flex; grid-column:1/-1; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:9px 14px; border:2px solid var(--c-ink); background:var(--c-paper); color:#9F1D1D; font:inherit; font-size:13px; font-weight:800; box-shadow:2px 2px 0 var(--c-ink); cursor:pointer; }
+        #student-search-retry .ui-icon { width:17px; height:17px; }
+        #student-search-retry:active { transform:translate(2px,2px); box-shadow:none; }
         #student-search-button[aria-busy="true"] { background:var(--c-panel); color:var(--c-ink); }
-        @media (max-width:767px) { .student-search-status { font-size:13px; } }
+        @media (max-width:767px) {
+            .student-search-status { padding:14px; gap:10px 12px; }
+            .student-search-copy strong { font-size:16px; }
+        }
 
         @keyframes pop-in { 0% { transform: scale(0.92); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
         .anim-pop { animation: pop-in 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
@@ -542,7 +555,19 @@
                             </button>
                         </div>
 
-                        <div id="student-search-status" class="student-search-status hidden" role="status" aria-live="polite" aria-atomic="true"><svg class="ui-icon icon-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#hs-icon-spinner"></use></svg><span></span></div>
+                        <div id="student-search-status" class="student-search-status hidden" role="status" aria-live="polite" aria-atomic="true">
+                            <div class="student-search-art" aria-hidden="true">
+                                <svg class="student-search-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><use href="#hs-icon-alert"></use></svg>
+                            </div>
+                            <div class="student-search-copy">
+                                <strong id="student-search-title">ยังโหลดคะแนนไม่ได้</strong>
+                                <p id="student-search-message"></p>
+                            </div>
+                            <button id="student-search-retry" type="button" onclick="searchStudent()">
+                                <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-refresh"></use></svg>
+                                ลองค้นหาอีกครั้ง
+                            </button>
+                        </div>
 
                         <div id="student-error" role="alert" class="hidden mt-5 p-3.5 bg-[#FFF0F0] text-[#9F1D1D] border-[2px] border-[#C62828] shadow-[3px_3px_0px_#C62828] text-xs sm:text-sm font-bold uppercase">
                             ⚠️ ไม่พบข้อมูลรหัสประจำตัวนักเรียนนี้ในระบบ กรุณาตรวจสอบอีกครั้ง
@@ -3239,13 +3264,15 @@
             document.getElementById('student-search-button-label').textContent =
                 state === 'searching' ? 'กำลังค้นหา…' : 'ค้นหาข้อมูล';
             status.dataset.state = state;
-            status.classList.toggle('hidden', state === 'ready');
-            status.querySelector('span').textContent = message;
+            status.classList.toggle('hidden', state !== 'error');
+            document.getElementById('student-search-message').textContent = state === 'error' ? message : '';
         }
 
         function cancelStudentLookup() {
             studentLookupRevision++;
+            const request = pendingStudentLookup;
             pendingStudentLookup = null;
+            request?.resolve();
             setStudentSearchState('ready');
         }
 
@@ -3261,6 +3288,35 @@
             searchStudent();
         }
 
+        function hasConfirmedStudentData() {
+            // Only show a snapshot confirmed by the server, never pending teacher edits.
+            return Boolean(cloudLoadedAt && confirmedSheetPayload &&
+                !hasUnsavedCloudChanges && pendingScoreSaves === 0);
+        }
+
+        function settlePendingStudentLookup(state) {
+            const request = pendingStudentLookup;
+            if (!request) return;
+            const input = document.getElementById('search-std-id');
+            if (request.revision !== studentLookupRevision || input.value.trim() !== request.sid ||
+                document.getElementById('student-view').classList.contains('hidden')) {
+                cancelStudentLookup();
+                return;
+            }
+            if (state === 'loaded' && hasConfirmedStudentData()) {
+                pendingStudentLookup = null;
+                setStudentSearchState('ready');
+                performStudentLogin(request.sid);
+                request.resolve();
+            } else if (state === 'error') {
+                pendingStudentLookup = null;
+                setStudentSearchState('error', 'เชื่อมต่อคะแนนออนไลน์ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วกดค้นหาอีกครั้ง');
+                request.resolve();
+            }
+            // A read paused for an edit or dialog is not a failed connection.
+            // Keep this lookup until a later successful read, cancellation, or real failure.
+        }
+
         async function searchStudent() {
             const input = document.getElementById('search-std-id');
             const sid = input.value.trim();
@@ -3269,30 +3325,25 @@
                 return showStudentCodeError('⚠️ กรุณากรอกรหัสนักเรียนเป็นตัวเลข 5 หลัก');
             }
             if (pendingStudentLookup?.sid === sid) return pendingStudentLookup.promise;
+            cancelStudentLookup();
             clearStudentCodeError();
-            if (cloudLoadedAt && Date.now() - cloudLoadedAt <= 15000) {
-                cancelStudentLookup();
-                return performStudentLogin(sid);
+            input.blur();
+            if (hasConfirmedStudentData()) {
+                performStudentLogin(sid);
+                // Scores already received in this tab open immediately. Refresh quietly.
+                if (Date.now() - cloudLoadedAt > 15000) requestLatestCloudData();
+                return;
             }
-            const request = {sid, revision: ++studentLookupRevision, promise: null};
+            const request = {sid, revision: ++studentLookupRevision, promise: null, resolve: null};
+            request.promise = new Promise(resolve => { request.resolve = resolve; });
             pendingStudentLookup = request;
-            setStudentSearchState('searching', 'กำลังค้นหาคะแนนรหัส ' + sid + '… ระบบจะเปิดผลให้เอง ไม่ต้องกดซ้ำ');
-            const isCurrent = () => pendingStudentLookup === request && request.revision === studentLookupRevision &&
-                input.value.trim() === sid && !document.getElementById('student-view').classList.contains('hidden');
-            request.promise = (async () => {
-                try {
-                    // Share the initial online read; typing a lookup never pauses it.
-                    const loaded = await loadDataFromCloud(true);
-                    if (!isCurrent()) return;
-                    if (!loaded) {
-                        return setStudentSearchState('error', 'เชื่อมต่อคะแนนออนไลน์ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วกดค้นหาอีกครั้ง');
-                    }
-                    setStudentSearchState('ready');
-                    performStudentLogin(sid);
-                } finally {
-                    if (pendingStudentLookup === request) pendingStudentLookup = null;
+            setStudentSearchState('searching');
+            // Share the first online read while keeping the form and page interactive.
+            loadDataFromCloud(true).then(() => {
+                if (pendingStudentLookup === request) {
+                    settlePendingStudentLookup(document.getElementById('cloud-refresh-panel').dataset.state);
                 }
-            })();
+            });
             return request.promise;
         }
 
@@ -3641,7 +3692,7 @@
             void button.offsetWidth;
             button.classList.add('refresh-click-turn');
             button.refreshIconTimer = setTimeout(() => button.classList.remove('refresh-click-turn'), 800);
-            return runWithLoading('กำลังโหลดคะแนนล่าสุด', () => loadDataFromCloud());
+            return loadDataFromCloud(true);
         }
 
         function checkAdminAccess() {
@@ -5108,8 +5159,8 @@ JSON Structure:
             if (!regressed) return false;
             // A delayed read may return an older Sheet revision. Keep the last
             // server-confirmed snapshot in memory and retry on the next refresh.
-            renderCloudRefreshStatus('error',
-                'ข้อมูลจาก Sheet เก่ากว่าชุดที่ยืนยันล่าสุด กำลังรอข้อมูลใหม่');
+            renderCloudRefreshStatus('waiting',
+                'แสดงข้อมูลที่ยืนยันล่าสุดอยู่ • รอตรวจสอบข้อมูลใหม่จาก Sheet');
             return true;
         }
 
@@ -5460,6 +5511,9 @@ JSON Structure:
             button.disabled = state === 'loading';
             button.setAttribute('aria-label', state === 'loading' ? 'กำลังโหลดข้อมูลล่าสุด' : 'โหลดข้อมูลล่าสุด');
             button.title = message;
+            if (state === 'loaded' || state === 'error') {
+                queueMicrotask(() => settlePendingStudentLookup(state));
+            }
         }
 
         function refreshGoogleSheetViews() {
@@ -5521,17 +5575,39 @@ JSON Structure:
                     if (window.HSCloudReader) {
                         result = await (earlyRead || window.HSCloudReader.read(url.toString()));
                     } else {
-                        // Keep the core page usable if the optional bootstrap asset is unavailable.
-                        const controller = new AbortController();
-                        const timer = setTimeout(() => controller.abort(), 12000);
-                        try {
-                            url.searchParams.set('_refresh', Date.now().toString());
-                            const response = await fetch(url.toString(), {
-                                method: 'GET', redirect: 'follow', cache: 'no-store', signal: controller.signal
-                            });
-                            if (!response.ok) throw new Error('Load HTTP error');
-                            result = {data: await response.json()};
-                        } finally { clearTimeout(timer); }
+                        // The original GET also works if the optional optimized reader is unavailable.
+                        url.searchParams.delete('action');
+                        url.searchParams.delete('knownSha');
+                        for (let attempt = 0; attempt < 2; attempt++) {
+                            const controller = new AbortController();
+                            const timer = setTimeout(() => controller.abort(), 12000);
+                            try {
+                                url.searchParams.set('_refresh', Date.now().toString());
+                                const response = await fetch(url.toString(), {
+                                    method: 'GET', redirect: 'follow', cache: 'no-store', signal: controller.signal
+                                });
+                                if (!response.ok) {
+                                    const error = new Error('Load HTTP ' + response.status);
+                                    error.retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+                                    throw error;
+                                }
+                                const data = await response.json();
+                                if (!data || !Array.isArray(data.classes) || !data.classes.every(c =>
+                                    c && typeof c.id === 'string' && typeof c.name === 'string' &&
+                                    Array.isArray(c.students) && Array.isArray(c.assignments))) {
+                                    const error = new Error('Invalid online score response');
+                                    error.retryable = true;
+                                    throw error;
+                                }
+                                result = {data};
+                                break;
+                            } catch (error) {
+                                const retryable = error.retryable === true || error.name === 'AbortError' ||
+                                    error instanceof TypeError || error instanceof SyntaxError;
+                                if (!retryable || attempt === 1 || navigator.onLine === false) throw error;
+                            } finally { clearTimeout(timer); }
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                        }
                     }
                     const blockedAfterRead = cloudRefreshBlockReason();
                     if (blockedAfterRead || saveRevision !== latestScoreSave || editRevision !== cloudEditRevision) {
@@ -5585,11 +5661,14 @@ JSON Structure:
                     return true;
                 } catch (error) {
                     console.error('Google Sheet load failed:', error);
-                    renderCloudRefreshStatus('error', cloudLoadedAt
-                        ? 'โหลดไม่สำเร็จ ข้อมูลที่เห็นเป็นข้อมูลออนไลน์ครั้งก่อน — กรุณาลองโหลดอีกครั้ง'
+                    const canKeepScores = hasConfirmedStudentData();
+                    renderCloudRefreshStatus(canKeepScores ? 'waiting' : 'error', canKeepScores
+                        ? 'แสดงคะแนนที่โหลดสำเร็จครั้งล่าสุดอยู่ • ยังตรวจสอบข้อมูลใหม่ไม่ได้ กดรีเฟรชเพื่อลองอีกครั้ง'
                         : 'โหลดคะแนนออนไลน์ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง');
                     const indicator = document.getElementById('cloud-status');
-                    if (indicator && !hasUnsavedCloudChanges) indicator.textContent = '☁️ โหลดไม่สำเร็จ';
+                    if (indicator && !hasUnsavedCloudChanges) {
+                        indicator.textContent = canKeepScores ? '☁️ รอตรวจข้อมูลใหม่' : '☁️ โหลดไม่สำเร็จ';
+                    }
                     return false;
                 } finally {
                     cloudLoadPromise = null;
