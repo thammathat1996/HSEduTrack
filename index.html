@@ -4,10 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>HongSon EduTrack | ตรวจสอบคะแนนนักเรียน</title>
+    <script async src="assets/cloud-read.js" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
     <link rel="stylesheet" href="assets/app.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preconnect" href="https://script.google.com">
+    <link rel="preconnect" href="https://script.google.com" crossorigin>
+    <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 
     <style>
@@ -128,6 +130,13 @@
         #qr-reader__dashboard_section_swaplink { display: none !important; }
 
         .progress-bar-fill { transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
+        .student-search-status { display:flex; align-items:center; gap:8px; margin-top:16px; padding:10px 12px; border:1.5px solid var(--c-green); background:var(--c-paper); color:var(--c-green); font-size:12px; font-weight:700; line-height:1.6; }
+        .student-search-status.hidden { display:none; }
+        .student-search-status[data-state="searching"] .icon-spinner { animation:ui-icon-turn .9s linear infinite; }
+        .student-search-status[data-state="error"] { color:#9F1D1D; border-color:#C62828; background:#FFF0F0; }
+        .student-search-status[data-state="error"] .icon-spinner { display:none; }
+        #student-search-button[aria-busy="true"] { background:var(--c-panel); color:var(--c-ink); }
+        @media (max-width:767px) { .student-search-status { font-size:13px; } }
 
         @keyframes pop-in { 0% { transform: scale(0.92); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
         .anim-pop { animation: pop-in 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
@@ -519,19 +528,21 @@
                             <span>ตรวจสอบคะแนน</span><span class="student-lookup-title-result">และผลการเรียน</span>
                         </h2>
                         <p class="text-[#3B741D] text-xs sm:text-sm font-semibold mb-6 leading-relaxed">
-                            กรอกรหัสประจำตัวนักเรียน 5 หลัก เพื่อดูรายละเอียดคะแนนเก็บรายชิ้นงาน สถานะการส่งงาน และผลการเรียน
+                            กรอกรหัสประจำตัวนักเรียน 5 หลัก แล้วกดค้นหาได้ทันที เพื่อดูคะแนน สถานะการส่งงาน และผลการเรียน
                         </p>
 
-                        <!-- Clean Command Input Bar -->
-                        <div class="flex flex-col sm:flex-row items-stretch gap-3">
+                        <!-- Search controls stay visible from the first paint. -->
+                        <div id="student-search-controls" class="flex flex-col sm:flex-row items-stretch gap-3">
                             <div class="student-code-field relative">
-                                <input type="text" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" id="search-std-id" oninput="clearStudentCodeError()" aria-describedby="student-error" placeholder="กรอกรหัสนักเรียน 5 หลัก (เช่น 12345)"
+                                <input type="text" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" id="search-std-id" oninput="studentCodeChanged()" onkeydown="handleStudentSearchKey(event)" enterkeyhint="search" aria-describedby="student-error student-search-status" placeholder="กรอกรหัสนักเรียน 5 หลัก (เช่น 12345)"
                                     aria-label="รหัสนักเรียน 5 หลัก" class="student-code-input">
                             </div>
-                            <button onclick="searchStudent()" class="hs-motion-button hs-search-button bg-[#72B01D] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2.5px] border-[#454955] shadow-[3px_3px_0px_#0D0A0B] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none px-7 py-3.5 sm:py-4 font-black text-base sm:text-lg tracking-wider uppercase transition-all cursor-pointer shrink-0">
-                                <svg class="ui-icon icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-search"></use></svg><span>ค้นหาข้อมูล</span>
+                            <button id="student-search-button" type="button" onclick="searchStudent()" class="hs-motion-button hs-search-button bg-[#72B01D] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2.5px] border-[#454955] shadow-[3px_3px_0px_#0D0A0B] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none px-7 py-3.5 sm:py-4 font-black text-base sm:text-lg tracking-wider uppercase transition-all cursor-pointer shrink-0">
+                                <svg class="ui-icon icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-search"></use></svg><span id="student-search-button-label">ค้นหาข้อมูล</span>
                             </button>
                         </div>
+
+                        <div id="student-search-status" class="student-search-status hidden" role="status" aria-live="polite" aria-atomic="true"><svg class="ui-icon icon-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#hs-icon-spinner"></use></svg><span></span></div>
 
                         <div id="student-error" role="alert" class="hidden mt-5 p-3.5 bg-[#FFF0F0] text-[#9F1D1D] border-[2px] border-[#C62828] shadow-[3px_3px_0px_#C62828] text-xs sm:text-sm font-bold uppercase">
                             ⚠️ ไม่พบข้อมูลรหัสประจำตัวนักเรียนนี้ในระบบ กรุณาตรวจสอบอีกครั้ง
@@ -3218,21 +3229,75 @@
             toggleBodyScroll();
         }
 
+        let studentLookupRevision = 0;
+        let pendingStudentLookup = null;
+
+        function setStudentSearchState(state, message = '') {
+            const button = document.getElementById('student-search-button');
+            const status = document.getElementById('student-search-status');
+            button.setAttribute('aria-busy', String(state === 'searching'));
+            document.getElementById('student-search-button-label').textContent =
+                state === 'searching' ? 'กำลังค้นหา…' : 'ค้นหาข้อมูล';
+            status.dataset.state = state;
+            status.classList.toggle('hidden', state === 'ready');
+            status.querySelector('span').textContent = message;
+        }
+
+        function cancelStudentLookup() {
+            studentLookupRevision++;
+            pendingStudentLookup = null;
+            setStudentSearchState('ready');
+        }
+
+        function studentCodeChanged() {
+            cancelStudentLookup();
+            clearStudentCodeError();
+            document.getElementById('student-login-selection').classList.add('hidden');
+        }
+
+        function handleStudentSearchKey(event) {
+            if (event.key !== 'Enter' || event.isComposing) return;
+            event.preventDefault();
+            searchStudent();
+        }
+
         async function searchStudent() {
-            const sid = document.getElementById('search-std-id').value.trim();
-            if (!/^[0-9]{5}$/.test(sid)) return showStudentCodeError('⚠️ กรุณากรอกรหัสนักเรียนเป็นตัวเลข 5 หลัก');
-            // A lookup must use a recent online snapshot, especially on mobile.
-            if (!cloudLoadedAt || Date.now() - cloudLoadedAt > 15000) {
-                document.activeElement.blur();
-                clearStudentCodeError();
-                if (!await loadDataFromCloud()) {
-                    return showStudentCodeError('โหลดคะแนนออนไลน์ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง');
-                }
+            const input = document.getElementById('search-std-id');
+            const sid = input.value.trim();
+            if (!/^[0-9]{5}$/.test(sid)) {
+                cancelStudentLookup();
+                return showStudentCodeError('⚠️ กรุณากรอกรหัสนักเรียนเป็นตัวเลข 5 หลัก');
             }
-            performStudentLogin(sid);
+            if (pendingStudentLookup?.sid === sid) return pendingStudentLookup.promise;
+            clearStudentCodeError();
+            if (cloudLoadedAt && Date.now() - cloudLoadedAt <= 15000) {
+                cancelStudentLookup();
+                return performStudentLogin(sid);
+            }
+            const request = {sid, revision: ++studentLookupRevision, promise: null};
+            pendingStudentLookup = request;
+            setStudentSearchState('searching', 'กำลังค้นหาคะแนนรหัส ' + sid + '… ระบบจะเปิดผลให้เอง ไม่ต้องกดซ้ำ');
+            const isCurrent = () => pendingStudentLookup === request && request.revision === studentLookupRevision &&
+                input.value.trim() === sid && !document.getElementById('student-view').classList.contains('hidden');
+            request.promise = (async () => {
+                try {
+                    // Share the initial online read; typing a lookup never pauses it.
+                    const loaded = await loadDataFromCloud(true);
+                    if (!isCurrent()) return;
+                    if (!loaded) {
+                        return setStudentSearchState('error', 'เชื่อมต่อคะแนนออนไลน์ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วกดค้นหาอีกครั้ง');
+                    }
+                    setStudentSearchState('ready');
+                    performStudentLogin(sid);
+                } finally {
+                    if (pendingStudentLookup === request) pendingStudentLookup = null;
+                }
+            })();
+            return request.promise;
         }
 
         function logoutStudent() {
+            cancelStudentLookup();
             studentTaskFilter = 'all';
             studentVisitBaselines.clear();
             loggedInStudentId = null;
@@ -3643,6 +3708,7 @@
         }
 
         function switchView(view) {
+            if (view !== 'student') cancelStudentLookup();
             const views = ['student-view', 'dashboard-view', 'teacher-view'];
             views.forEach(v => {
                 const el = document.getElementById(v);
@@ -4160,7 +4226,6 @@
 
         function saveGeminiApiKey(key) {
             localStorage.setItem('gemini_api_key', key.trim());
-            showModal({title: "สำเร็จ", msg: "บันทึก API Key เรียบร้อยแล้ว", type: "alert"});
         }
 
         function loadGeminiApiKey() {
@@ -5377,7 +5442,7 @@ JSON Structure:
             if (pendingScoreSaves > 0) return 'รอบันทึกข้อมูลให้เสร็จก่อน แล้วจะโหลดข้อมูลล่าสุดให้';
             if (hasUnsavedCloudChanges) return 'มีข้อมูลที่ยังบันทึกไม่สำเร็จ กรุณากดลองบันทึกอีกครั้งก่อนโหลดข้อมูล';
             const focused = document.activeElement;
-            if (focused && focused.matches('input, textarea, select, [contenteditable="true"]')) {
+            if (focused && focused.id !== 'search-std-id' && focused.matches('input, textarea, select, [contenteditable="true"]')) {
                 return 'พักการโหลดไว้ระหว่างกรอกข้อมูล เมื่อกรอกเสร็จระบบจะโหลดให้อัตโนมัติ';
             }
             const openModal = Array.from(document.querySelectorAll('div[id$="-modal"]')).some(el =>
@@ -5442,32 +5507,52 @@ JSON Structure:
             const editRevision = cloudEditRevision;
             renderCloudRefreshStatus('loading', 'กำลังโหลดข้อมูลล่าสุดจาก Google Sheet…');
             cloudLoadPromise = (async () => {
-                const controller = new AbortController();
-                const timer = setTimeout(() => controller.abort(), 30000);
                 try {
                     if (!GAS_URL) throw new Error('Missing Google Sheet connection');
                     const url = new URL(GAS_URL);
-                    url.searchParams.set('_refresh', Date.now().toString());
-                    if (checkRevision && cloudRevisionHash) url.searchParams.set('action', 'revision');
-                    let response = await fetch(url.toString(), {
-                        method: 'GET', redirect: 'follow', cache: 'no-store', signal: controller.signal
-                    });
-                    if (!response.ok) throw new Error('Load HTTP error');
-                    let cloudData = await response.json();
-                    if (checkRevision && cloudRevisionHash && cloudData.success === true &&
-                        cloudData.storageFormat === 'EDUTRACK_CHUNKS_V1' && cloudData.sha256) {
-                        if (cloudData.sha256 === cloudRevisionHash) {
-                            cloudLoadedAt = Date.now();
-                            renderCloudRefreshStatus('loaded', 'ข้อมูลออนไลน์ยังเป็นรุ่นล่าสุด');
-                            return true;
-                        }
-                        url.searchParams.delete('action');
-                        url.searchParams.set('_refresh', Date.now().toString());
-                        response = await fetch(url.toString(), {
-                            method: 'GET', redirect: 'follow', cache: 'no-store', signal: controller.signal
-                        });
-                        if (!response.ok) throw new Error('Load HTTP error');
-                        cloudData = await response.json();
+                    url.searchParams.set('action', 'sync');
+                    const requestedHash = checkRevision ? cloudRevisionHash : null;
+                    if (requestedHash) url.searchParams.set('knownSha', requestedHash);
+                    // New Apps Script returns either the latest complete dataset or an
+                    // unchanged receipt. Older deployments simply return the full data.
+                    window.HSInitialCloudReadStarted = true;
+                    const earlyRead = !cloudLoadedAt && window.HSCloudReader?.takeInitial(GAS_URL);
+                    let result;
+                    if (window.HSCloudReader) {
+                        result = await (earlyRead || window.HSCloudReader.read(url.toString()));
+                    } else {
+                        // Keep the core page usable if the optional bootstrap asset is unavailable.
+                        const controller = new AbortController();
+                        const timer = setTimeout(() => controller.abort(), 12000);
+                        try {
+                            url.searchParams.set('_refresh', Date.now().toString());
+                            const response = await fetch(url.toString(), {
+                                method: 'GET', redirect: 'follow', cache: 'no-store', signal: controller.signal
+                            });
+                            if (!response.ok) throw new Error('Load HTTP error');
+                            result = {data: await response.json()};
+                        } finally { clearTimeout(timer); }
+                    }
+                    const blockedAfterRead = cloudRefreshBlockReason();
+                    if (blockedAfterRead || saveRevision !== latestScoreSave || editRevision !== cloudEditRevision) {
+                        cloudRefreshRequested = true;
+                        renderCloudRefreshStatus('waiting', blockedAfterRead || 'มีการแก้ไขระหว่างโหลด กำลังรอโหลดข้อมูลอีกครั้ง');
+                        return false;
+                    }
+                    if (result.error) throw result.error;
+                    const cloudData = result.data;
+                    if (cloudData?.unchanged === true && cloudData.success === true &&
+                        cloudData.readFormat === 'EDUTRACK_FAST_READ_V1' &&
+                        cloudData.storageFormat === 'EDUTRACK_CHUNKS_V1' &&
+                        requestedHash && cloudData.sha256 === requestedHash &&
+                        cloudRevisionHash === requestedHash && confirmedSheetPayload) {
+                        cloudLoadedAt = Date.now();
+                        renderCloudRefreshStatus('loaded', 'ข้อมูลออนไลน์ยังเป็นรุ่นล่าสุด');
+                        document.getElementById('cloud-refresh-time').textContent =
+                            'ตรวจสอบสำเร็จเมื่อ ' + new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'medium' });
+                        const indicator = document.getElementById('cloud-status');
+                        if (indicator) indicator.textContent = '☁️ ONLINE';
+                        return true;
                     }
                     if (!cloudData || !Array.isArray(cloudData.classes) ||
                         !cloudData.classes.every(c => c && typeof c.id === 'string' &&
@@ -5507,7 +5592,6 @@ JSON Structure:
                     if (indicator && !hasUnsavedCloudChanges) indicator.textContent = '☁️ โหลดไม่สำเร็จ';
                     return false;
                 } finally {
-                    clearTimeout(timer);
                     cloudLoadPromise = null;
                     if (cloudRefreshRequested && !cloudRefreshBlockReason()) scheduleCloudRefresh();
                 }
@@ -5535,11 +5619,13 @@ JSON Structure:
             downloadAnchor.remove();
         }
 
+        // Begin the online read before deferred presentation scripts finish loading.
+        const initialCloudRead = loadDataFromCloud();
         // Initialize once; returning to this page triggers a fresh Sheet read.
         async function initializeCloudData() {
             initSupabaseClient(); // Show which database this installation uses; no second sync engine.
-            // Initial reads use the header status so the landing page stays visible.
-            await loadDataFromCloud();
+            // Keep the landing page interactive while the same online read completes.
+            await initialCloudRead;
         }
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initializeCloudData, { once: true });
@@ -5596,10 +5682,10 @@ JSON Structure:
             if (event.target.closest('#teacher-gradebook-table')) setTimeout(() => applyTeacherFilters(true), 0);
         });
         document.addEventListener('input', event => {
-            cloudEditRevision++;
+            if (event.target.id !== 'search-std-id') cloudEditRevision++;
             if (event.target.matches('#teacher-gradebook-table input[type="number"]')) event.target.setCustomValidity('');
         });
-        document.addEventListener('change', () => { cloudEditRevision++; });
+        document.addEventListener('change', event => { if (event.target.id !== 'search-std-id') cloudEditRevision++; });
         document.addEventListener('focusout', () => {
             if (cloudRefreshRequested) scheduleCloudRefresh();
         });
