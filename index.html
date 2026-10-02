@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>HongSon EduTrack | ตรวจสอบคะแนนนักเรียน</title>
-    <script async src="assets/cloud-read.js?v=20261002-1" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
+    <script async src="assets/cloud-read.js?v=20261002-2" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
     <link rel="stylesheet" href="assets/app.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -5489,12 +5489,34 @@ JSON Structure:
             return result;
         }
 
+        function isCloudViewControl(element) {
+            // These controls change the view, not the online scores.
+            return Boolean(element?.matches?.('#search-std-id, #teacher-student-search, #teacher-filter-task, #teacher-filter-status, #teacher-mobile-column, #teacher-class-selector, #dash-class-selector'));
+        }
+
+        function focusedScoreHasDraft(input) {
+            if (input.validity.badInput || input.validity.customError) return true;
+            const studentId = input.closest('tr[data-student-id]')?.dataset.studentId;
+            const student = getActiveAdminClass()?.students.find(s => s.id === studentId);
+            if (!student) return true;
+            const column = input.dataset.scoreColumn;
+            const current = column.startsWith('task:')
+                ? student.scores?.[column.slice(5)] : student[column.slice(6)];
+            const displayed = current === null || current === undefined || current === 'submitted' ? '' : String(current);
+            const typed = input.value.trim();
+            if (typed === '' || displayed === '') return typed !== displayed;
+            return !Number.isFinite(Number(typed)) || Number(typed) !== Number(displayed);
+        }
+
         function cloudRefreshBlockReason() {
             if (pendingScoreSaves > 0) return 'รอบันทึกข้อมูลให้เสร็จก่อน แล้วจะโหลดข้อมูลล่าสุดให้';
             if (hasUnsavedCloudChanges) return 'มีข้อมูลที่ยังบันทึกไม่สำเร็จ กรุณากดลองบันทึกอีกครั้งก่อนโหลดข้อมูล';
             const focused = document.activeElement;
-            if (focused && focused.id !== 'search-std-id' && focused.matches('input, textarea, select, [contenteditable="true"]')) {
-                return 'พักการโหลดไว้ระหว่างกรอกข้อมูล เมื่อกรอกเสร็จระบบจะโหลดให้อัตโนมัติ';
+            if (focused && !isCloudViewControl(focused) && focused.matches('input, textarea, select, [contenteditable="true"]')) {
+                const isScore = focused.matches('#teacher-gradebook-table input[data-score-column]');
+                if (!isScore || focusedScoreHasDraft(focused)) {
+                    return 'พักการโหลดไว้ระหว่างกรอกข้อมูล เมื่อกรอกเสร็จระบบจะโหลดให้อัตโนมัติ';
+                }
             }
             const openModal = Array.from(document.querySelectorAll('div[id$="-modal"]')).some(el =>
                 !el.classList.contains('hidden') && el.getClientRects().length > 0
@@ -5520,7 +5542,10 @@ JSON Structure:
             const region = document.getElementById('teacher-gradebook-scroll');
             const scrollLeft = region.scrollLeft;
             const scrollTop = region.scrollTop;
+            const focused = document.activeElement;
+            const scoreInputId = focused?.matches('#teacher-gradebook-table input[data-score-column]') ? focused.id : null;
             refreshCurrentActiveView();
+            if (scoreInputId) document.getElementById(scoreInputId)?.focus({preventScroll: true});
             region.scrollLeft = scrollLeft;
             region.scrollTop = scrollTop;
             if (loggedInStudentUniqueId) {
@@ -5580,7 +5605,7 @@ JSON Structure:
                         url.searchParams.delete('knownSha');
                         for (let attempt = 0; attempt < 2; attempt++) {
                             const controller = new AbortController();
-                            const timer = setTimeout(() => controller.abort(), 12000);
+                            const timer = setTimeout(() => controller.abort(), attempt === 0 ? 20000 : 12000);
                             try {
                                 url.searchParams.set('_refresh', Date.now().toString());
                                 const response = await fetch(url.toString(), {
@@ -5761,10 +5786,10 @@ JSON Structure:
             if (event.target.closest('#teacher-gradebook-table')) setTimeout(() => applyTeacherFilters(true), 0);
         });
         document.addEventListener('input', event => {
-            if (event.target.id !== 'search-std-id') cloudEditRevision++;
+            if (!isCloudViewControl(event.target)) cloudEditRevision++;
             if (event.target.matches('#teacher-gradebook-table input[type="number"]')) event.target.setCustomValidity('');
         });
-        document.addEventListener('change', event => { if (event.target.id !== 'search-std-id') cloudEditRevision++; });
+        document.addEventListener('change', event => { if (!isCloudViewControl(event.target)) cloudEditRevision++; });
         document.addEventListener('focusout', () => {
             if (cloudRefreshRequested) scheduleCloudRefresh();
         });

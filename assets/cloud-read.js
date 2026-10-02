@@ -3,12 +3,13 @@
  */
 (() => {
     const endpoint = document.currentScript?.dataset.sheetUrl;
-    const READ_TIMEOUT_MS = 12000;
+    const READ_TIMEOUT_MS = 20000;
+    const RETRY_TIMEOUT_MS = 12000;
     const RETRY_DELAY_MS = 500;
     async function read(url) {
         for (let attempt = 0; attempt < 2; attempt++) {
             const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
+            const timer = setTimeout(() => controller.abort(), attempt === 0 ? READ_TIMEOUT_MS : RETRY_TIMEOUT_MS);
             try {
                 const freshURL = new URL(url);
                 // If the optimized endpoint fails, retry the original Sheet read.
