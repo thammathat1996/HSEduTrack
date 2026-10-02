@@ -6,9 +6,12 @@
     const READ_TIMEOUT_MS = 20000;
     const RETRY_TIMEOUT_MS = 12000;
     const RETRY_DELAY_MS = 500;
-    async function read(url) {
+    async function read(url, {signal} = {}) {
         for (let attempt = 0; attempt < 2; attempt++) {
+            if (signal?.aborted) return {error: new DOMException('Read cancelled', 'AbortError'), cancelled: true};
             const controller = new AbortController();
+            const cancel = () => controller.abort();
+            signal?.addEventListener('abort', cancel, {once: true});
             const timer = setTimeout(() => controller.abort(), attempt === 0 ? READ_TIMEOUT_MS : RETRY_TIMEOUT_MS);
             try {
                 const freshURL = new URL(url);
@@ -43,10 +46,12 @@
                 }
                 return {data};
             } catch (error) {
+                if (signal?.aborted) return {error, cancelled: true};
                 const retryable = error.retryable === true || error.name === 'AbortError' || error instanceof TypeError || error instanceof SyntaxError;
                 if (!retryable || attempt === 1 || navigator.onLine === false) return {error};
             } finally {
                 clearTimeout(timer);
+                signal?.removeEventListener('abort', cancel);
             }
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
         }

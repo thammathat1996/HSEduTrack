@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>HongSon EduTrack | ตรวจสอบคะแนนนักเรียน</title>
-    <script async src="assets/cloud-read.js?v=20261002-2" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
+    <script async src="assets/cloud-read.js?v=20261002-3" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
     <link rel="stylesheet" href="assets/app.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -5082,15 +5082,21 @@ JSON Structure:
         let activeScoreSnapshot = null;
         let scoreSaveWorkerRunning = false;
         let scoreSaveWaiters = [];
-        const SAVE_CONFIRM_DELAY_MS = 4000;
-        const SAVE_RESPONSE_TIMEOUT_MS = 15000;
-        const SAVE_CONFIRM_TIMEOUT_MS = 8000;
+        const SAVE_CONFIRM_DELAY_MS = 8000;
+        const SAVE_RESPONSE_TIMEOUT_MS = 30000;
+        const SAVE_CONFIRM_TIMEOUT_MS = 20000;
+        const SAVE_MAX_LIFETIME_MS = 50000;
         const SAVE_CONFIRM_RETRY_DELAY_MS = 1500;
         const SAVE_CONFIRM_ATTEMPTS = 4;
         let latestScoreSave = 0;
         let hasUnsavedCloudChanges = false;
         let pendingScoreSaves = 0;
         let cloudLoadPromise = null;
+        let cloudLoadController = null;
+        let lastScoreActivityAt = 0;
+        let automaticReadRetryAfter = 0;
+        let automaticReadFailures = 0;
+        let unconfirmedScoreSnapshots = [];
         let cloudRefreshRequested = false;
         let cloudRefreshTimer = null;
         let cloudEditRevision = 0;
@@ -5115,10 +5121,16 @@ JSON Structure:
                 const current = await response.json();
                 if (expectedRevision !== latestScoreSave || expectedPayload !== pendingSheetPayload ||
                     pendingScoreSaves > 0 || JSON.stringify(current) !== expectedPayload) return false;
+                const hash = await scorePayloadHash(expectedPayload);
+                if (expectedRevision !== latestScoreSave || expectedPayload !== pendingSheetPayload || pendingScoreSaves > 0) return false;
                 confirmedSheetPayload = expectedPayload;
+                cloudRevisionHash = hash;
+                cloudLoadedAt = Date.now();
+                unconfirmedScoreSnapshots = [];
                 pendingSheetPayload = null;
                 hasUnsavedCloudChanges = false;
                 renderScoreSaveStatus('saved', Date.now());
+                updateRefreshAfterSave();
                 return true;
             } catch (error) {
                 console.error('Could not check the pending Sheet save:', error);
@@ -5243,139 +5255,162 @@ JSON Structure:
 
         async function persistScoreSnapshot(snapshot) {
             const expectedHash = scorePayloadHash(snapshot.payload);
-            if (!await checkSheetStorageCapacity(snapshot.payload)) return false;
-            if (!teacherSessionToken) {
-                lastScoreSaveIssue = 'กรุณาเข้าระบบครูอีกครั้ง แล้วกดลองบันทึก คะแนนที่แก้ไขยังอยู่ในหน้านี้ กรุณาลองบันทึกหรือดาวน์โหลดสำเนาก่อนปิดหน้า';
-                return false;
-            }
             return new Promise(resolve => {
                 let settled = false;
-                let confirmationPromise = null;
-                let confirmationController = null;
-                const postController = new AbortController();
-                let slowTimer;
-                let postTimer;
+                let activeController = null;
+                let posted = false;
+                let ambiguous = true;
+                const startedAt = Date.now();
                 const finish = success => {
                     if (settled) return;
                     settled = true;
                     clearTimeout(slowTimer);
-                    clearTimeout(postTimer);
-                    postController.abort();
-                    if (confirmationController) confirmationController.abort();
+                    clearTimeout(deadlineTimer);
+                    activeController?.abort();
+                    if (success) unconfirmedScoreSnapshots = [];
+                    else if (posted && ambiguous && !unconfirmedScoreSnapshots.some(s => s.revision === snapshot.revision)) {
+                        unconfirmedScoreSnapshots.push(snapshot);
+                    }
                     resolve(success);
-                };
-                const confirmStoredSnapshot = () => {
-                    if (confirmationPromise) return confirmationPromise;
-                    confirmationPromise = (async () => {
-                        const controller = new AbortController();
-                        confirmationController = controller;
-                        const timer = setTimeout(() => controller.abort(), SAVE_CONFIRM_TIMEOUT_MS);
-                        try {
-                            const url = new URL(GAS_URL);
-                            url.searchParams.set('_refresh', Date.now().toString());
-                            const response = await fetch(url.toString(), {
-                                method: 'GET', redirect: 'follow', cache: 'no-store', signal: controller.signal
-                            });
-                            if (!response.ok) return false;
-                            // Read only: never replace the teacher's current edits with this response.
-                            // The existing Apps Script stores and returns this exact JSON object.
-                            return JSON.stringify(await response.json()) === snapshot.payload;
-                        } catch (_) {
-                            return false;
-                        } finally {
-                            clearTimeout(timer);
-                            if (confirmationController === controller) confirmationController = null;
-                            confirmationPromise = null;
-                        }
-                    })();
-                    return confirmationPromise;
                 };
                 const showVerifying = () => {
                     if (!settled && snapshot.revision === latestScoreSave) renderScoreSaveStatus('verifying');
                 };
-                // A write can reach Sheet while its redirect/response is delayed or lost.
-                // Confirm the complete snapshot, including lastUpdated, before showing success.
-                slowTimer = setTimeout(async () => {
-                    showVerifying();
-                    if (await confirmStoredSnapshot()) finish(true);
+                const slowTimer = setTimeout(() => {
+                    // Waiting for this POST does not start a competing read request.
+                    if (!settled && snapshot.revision === latestScoreSave) {
+                        document.getElementById('teacher-save-detail').textContent =
+                            'Google Sheet กำลังตอบกลับช้า คะแนนที่กรอกยังอยู่ในหน้านี้';
+                    }
                 }, SAVE_CONFIRM_DELAY_MS);
-                postTimer = setTimeout(() => postController.abort(), SAVE_RESPONSE_TIMEOUT_MS);
+                const deadlineTimer = setTimeout(() => {
+                    if (settled) return;
+                    lastScoreSaveIssue = 'ระบบตอบกลับนานเกินไป คะแนนที่กรอกยังอยู่ในหน้านี้ กดลองบันทึกอีกครั้งหรือดาวน์โหลดสำเนาก่อนปิดหน้า';
+                    finish(false);
+                }, SAVE_MAX_LIFETIME_MS);
+                const requestJson = async (url, options, timeout) => {
+                    if (settled) throw new Error('Save attempt ended');
+                    const controller = new AbortController();
+                    activeController = controller;
+                    const remaining = SAVE_MAX_LIFETIME_MS - (Date.now() - startedAt);
+                    const timer = setTimeout(() => controller.abort(), Math.max(1, Math.min(timeout, remaining)));
+                    try {
+                        const response = await fetch(url, {...options, redirect: 'follow', signal: controller.signal});
+                        if (!response.ok) throw new Error('Save HTTP ' + response.status);
+                        return await response.json();
+                    } finally {
+                        clearTimeout(timer);
+                        if (activeController === controller) activeController = null;
+                    }
+                };
+                const readStoredSnapshot = async () => {
+                    const url = new URL(GAS_URL);
+                    url.searchParams.set('_refresh', Date.now().toString());
+                    const current = await requestJson(url.toString(), {method: 'GET', cache: 'no-store'}, SAVE_CONFIRM_TIMEOUT_MS);
+                    if (!current || !Array.isArray(current.classes)) throw new Error('Invalid save verification response');
+                    return JSON.stringify(current);
+                };
+                const confirmStoredSnapshot = async () => {
+                    if (settled) return false;
+                    try { return await readStoredSnapshot() === snapshot.payload; }
+                    catch (_) { return false; }
+                };
                 (async () => {
                     try {
-                        if (!GAS_URL) throw new Error('Missing Google Sheet connection');
-                        const response = await fetch(GAS_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                            redirect: 'follow',
-                            body: JSON.stringify({
-                                action: 'saveData', token: teacherSessionToken,
-                                baseUpdated: confirmedSheetPayload
-                                    ? Number(JSON.parse(confirmedSheetPayload).lastUpdated) || 0 : 0,
-                                data: JSON.parse(snapshot.payload)
-                            }),
-                            signal: postController.signal
-                        });
-                        if (!response.ok) throw new Error('Save HTTP error');
-                        const result = await response.json();
-                        if (!result || result.success === false ||
-                            !(result.success === true || result.status === 'success')) {
-                            const error = new Error('Google Sheet did not confirm the save');
-                            if (result && result.success === false && typeof result.message === 'string') {
-                                error.sheetMessage = result.message;
-                                error.sheetCode = result.code;
+                        if (!await checkSheetStorageCapacity(snapshot.payload)) { finish(false); return; }
+                        if (settled) return;
+                        if (!teacherSessionToken) {
+                            lastScoreSaveCode = 'AUTH_REQUIRED';
+                            lastScoreSaveIssue = 'กรุณาเข้าระบบครูอีกครั้ง แล้วกดลองบันทึก คะแนนที่แก้ไขยังอยู่ในหน้านี้';
+                            finish(false); return;
+                        }
+                        // A lost response may belong to an earlier committed write from this tab.
+                        // Rebase only when the Sheet exactly matches one of our immutable snapshots.
+                        if (unconfirmedScoreSnapshots.length) {
+                            showVerifying();
+                            const stored = await readStoredSnapshot();
+                            if (settled) return;
+                            const own = unconfirmedScoreSnapshots.find(item => item.payload === stored);
+                            if (own) {
+                                confirmedSheetPayload = stored;
+                                cloudRevisionHash = await scorePayloadHash(stored);
+                                if (settled) return;
+                                cloudLoadedAt = Date.now();
+                                unconfirmedScoreSnapshots = unconfirmedScoreSnapshots.filter(item => item.revision > own.revision);
+                            } else if (stored !== confirmedSheetPayload) {
+                                const error = new Error('Different online version');
+                                error.sheetCode = 'CONFLICT';
+                                error.sheetMessage = 'มีข้อมูลใหม่ที่ไม่ใช่รายการบันทึกจากแท็บนี้ กรุณาตรวจข้อมูลก่อนบันทึกอีกครั้ง';
+                                throw error;
                             }
+                        }
+                        let result;
+                        for (let attempt = 0; attempt < 2 && !settled; attempt++) {
+                            posted = true;
+                            result = await requestJson(GAS_URL, {
+                                method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'},
+                                body: JSON.stringify({action: 'saveData', token: teacherSessionToken,
+                                    baseUpdated: confirmedSheetPayload ? Number(JSON.parse(confirmedSheetPayload).lastUpdated) || 0 : 0,
+                                    data: JSON.parse(snapshot.payload)})
+                            }, SAVE_RESPONSE_TIMEOUT_MS);
+                            if (settled) return;
+                            if (result?.success === false && result.code === 'BUSY' && attempt === 0) {
+                                await new Promise(resolve => setTimeout(resolve, SAVE_CONFIRM_RETRY_DELAY_MS));
+                                continue;
+                            }
+                            break;
+                        }
+                        if (settled) return;
+                        if (!result || result.success === false || !(result.success === true || result.status === 'success')) {
+                            const error = new Error('Google Sheet did not confirm the save');
+                            if (result?.success === false) { error.sheetCode = result.code; error.sheetMessage = result.message; }
                             throw error;
                         }
-                        clearTimeout(slowTimer);
-                        clearTimeout(postTimer);
-                        // Code.gs returns this receipt only after flush + full read-back validation.
-                        // Match every field to THIS immutable snapshot; success alone is never enough.
                         const hash = await expectedHash;
-                        if (hash && result.storageFormat === 'EDUTRACK_CHUNKS_V1' &&
-                            result.sha256 === hash && result.characters === snapshot.payload.length &&
-                            result.lastUpdated === JSON.parse(snapshot.payload).lastUpdated) {
-                            finish(true);
-                            return;
+                        if (settled) return;
+                        if (hash && result.storageFormat === 'EDUTRACK_CHUNKS_V1' && result.sha256 === hash &&
+                            result.characters === snapshot.payload.length && result.lastUpdated === JSON.parse(snapshot.payload).lastUpdated) {
+                            finish(true); return;
                         }
                         showVerifying();
                         let confirmed = await confirmStoredSnapshot();
-                        // The first GET may precede the Sheet write or return an older redirect.
-                        // Retry only after Apps Script acknowledged this POST.
                         for (let attempt = 1; !confirmed && !settled && attempt < SAVE_CONFIRM_ATTEMPTS; attempt++) {
                             await new Promise(resolve => setTimeout(resolve, SAVE_CONFIRM_RETRY_DELAY_MS));
-                            confirmed = await confirmStoredSnapshot();
+                            if (!settled) confirmed = await confirmStoredSnapshot();
                         }
-                        if (!confirmed) lastScoreSaveIssue =
-                            'Apps Script ตอบว่าสำเร็จ แต่ข้อมูลใน Google Sheet ยังไม่ตรงกับคะแนนที่ส่ง กรุณารอสักครู่แล้วลองบันทึกอีกครั้ง';
+                        if (!settled && !confirmed) lastScoreSaveIssue = 'Apps Script ตอบว่าสำเร็จ แต่ยังยืนยันคะแนนใน Google Sheet ไม่ได้ คะแนนที่กรอกยังอยู่ในหน้านี้';
                         finish(confirmed);
                     } catch (error) {
                         if (settled) return;
-                        clearTimeout(slowTimer);
                         if (['CONFLICT', 'AUTH_REQUIRED', 'INVALID_DATA', 'BUSY'].includes(error.sheetCode)) {
+                            ambiguous = false;
                             if (error.sheetCode === 'AUTH_REQUIRED') teacherSessionToken = null;
                             lastScoreSaveCode = error.sheetCode;
-                            lastScoreSaveIssue = 'บันทึกไม่สำเร็จ: ' + error.sheetMessage + ' • คะแนนที่แก้ไขยังอยู่ในหน้านี้ กรุณาลองบันทึกหรือดาวน์โหลดสำเนาก่อนปิดหน้า';
-                            finish(false);
-                            return;
+                            lastScoreSaveIssue = 'บันทึกไม่สำเร็จ: ' + error.sheetMessage + ' • คะแนนที่แก้ไขยังอยู่ในหน้านี้';
+                            finish(false); return;
                         }
                         showVerifying();
-                        const confirmed = await confirmStoredSnapshot();
-                        if (!confirmed && !settled) {
-                            if (error.sheetCode === 'AUTH_REQUIRED') teacherSessionToken = null;
-                            if (error.sheetCode) lastScoreSaveCode = error.sheetCode;
-                            lastScoreSaveIssue = error.sheetMessage
-                                ? 'บันทึกไม่สำเร็จ: ' + error.sheetMessage + ' • คะแนนที่แก้ไขยังอยู่ในหน้านี้ กรุณาลองบันทึกหรือดาวน์โหลดสำเนาก่อนปิดหน้า'
-                                : 'ยังตรวจไม่พบคะแนนล่าสุดใน Google Sheet กรุณาตรวจอินเทอร์เน็ตแล้วลองบันทึกอีกครั้ง';
-                            console.error('Google Sheet save unconfirmed:', error);
-                        }
-                        finish(confirmed);
+                        // Verify after the POST ended, so reading never competes with saving.
+                        const confirmed = posted && await confirmStoredSnapshot();
+                        if (settled) return;
+                        if (!confirmed) lastScoreSaveIssue = error.sheetMessage
+                            ? 'บันทึกไม่สำเร็จ: ' + error.sheetMessage + ' • คะแนนที่แก้ไขยังอยู่ในหน้านี้'
+                            : 'ยังยืนยันคะแนนออนไลน์ไม่ได้ คะแนนที่กรอกยังอยู่ในหน้านี้ กดลองบันทึกอีกครั้งหรือดาวน์โหลดสำเนาก่อนปิดหน้า';
+                        finish(Boolean(confirmed));
                     }
                 })();
             });
         }
 
         function updateRefreshAfterSave() {
-            if (!cloudRefreshRequested) return;
+            if (!cloudRefreshRequested) {
+                if (pendingScoreSaves === 0 && !hasUnsavedCloudChanges && cloudLoadedAt) {
+                    renderCloudRefreshStatus('loaded', 'บันทึกสำเร็จแล้ว • คะแนนล่าสุดได้รับการยืนยันจาก Sheet');
+                } else if (pendingScoreSaves === 0 && hasUnsavedCloudChanges) {
+                    renderCloudRefreshStatus('waiting', cloudRefreshBlockReason());
+                }
+                return;
+            }
             const reason = cloudRefreshBlockReason();
             if (pendingScoreSaves === 0 && !hasUnsavedCloudChanges) {
                 // Do not leave "waiting for save" on screen while focus/modal blocks a reload.
@@ -5401,7 +5436,19 @@ JSON Structure:
                     catch (error) { console.error('Save failed:', error); }
                     activeScoreSnapshot = null;
                     updatePendingScoreSaves();
-                    if (saved) confirmedSheetPayload = snapshot.payload;
+                    if (!saved) {
+                        // Stop after an unknown outcome. Keep the latest edits and settle every waiter.
+                        queuedScoreSnapshot = null;
+                        updatePendingScoreSaves();
+                        hasUnsavedCloudChanges = true;
+                        renderScoreSaveStatus('error');
+                        const waiting = scoreSaveWaiters;
+                        scoreSaveWaiters = [];
+                        waiting.forEach(item => item.resolve(false));
+                        updateRefreshAfterSave();
+                        break;
+                    }
+                    confirmedSheetPayload = snapshot.payload;
                     if (snapshot.revision === latestScoreSave) {
                         hasUnsavedCloudChanges = !saved;
                         if (saved) pendingSheetPayload = null;
@@ -5464,12 +5511,17 @@ JSON Structure:
                     lastScoreSaveCode = '';
                     lastScoreSaveIssue = '';
                     confirmedSheetPayload = null;
+                    unconfirmedScoreSnapshots = [];
                     loadDataFromCloud();
                 }
             });
         }
 
         function saveData() {
+            lastScoreActivityAt = Date.now();
+            clearTimeout(cloudRefreshTimer);
+            cloudRefreshRequested = false;
+            cloudLoadController?.abort(); // Give the write priority over a presentation read.
             const revision = ++latestScoreSave;
             lastScoreSaveIssue = '';
             lastScoreSaveCode = '';
@@ -5483,8 +5535,8 @@ JSON Structure:
             const result = new Promise(resolve => scoreSaveWaiters.push({ revision, resolve }));
             if (!scoreSaveWorkerRunning) {
                 scoreSaveWorkerRunning = true;
-                // Combine same-turn edits without adding a debounce delay to the first save.
-                queueMicrotask(flushScoreSaves);
+                // Combine a short burst of entries; rows still update immediately.
+                setTimeout(flushScoreSaves, 250);
             }
             return result;
         }
@@ -5568,6 +5620,9 @@ JSON Structure:
         }
 
         function requestLatestCloudData() {
+            if (scoreSaveWorkerRunning || hasUnsavedCloudChanges || pendingScoreSaves ||
+                Date.now() - lastScoreActivityAt < 10000 || Date.now() < automaticReadRetryAfter ||
+                (cloudLoadedAt && Date.now() - cloudLoadedAt < 10000)) return;
             cloudRefreshRequested = true;
             scheduleCloudRefresh();
         }
@@ -5585,6 +5640,8 @@ JSON Structure:
             const saveRevision = latestScoreSave;
             const editRevision = cloudEditRevision;
             renderCloudRefreshStatus('loading', 'กำลังโหลดข้อมูลล่าสุดจาก Google Sheet…');
+            const readController = new AbortController();
+            cloudLoadController = readController;
             cloudLoadPromise = (async () => {
                 try {
                     if (!GAS_URL) throw new Error('Missing Google Sheet connection');
@@ -5598,13 +5655,16 @@ JSON Structure:
                     const earlyRead = !cloudLoadedAt && window.HSCloudReader?.takeInitial(GAS_URL);
                     let result;
                     if (window.HSCloudReader) {
-                        result = await (earlyRead || window.HSCloudReader.read(url.toString()));
+                        result = await (earlyRead || window.HSCloudReader.read(url.toString(), {signal: readController.signal}));
                     } else {
                         // The original GET also works if the optional optimized reader is unavailable.
                         url.searchParams.delete('action');
                         url.searchParams.delete('knownSha');
                         for (let attempt = 0; attempt < 2; attempt++) {
                             const controller = new AbortController();
+                            const cancelRead = () => controller.abort();
+                            readController.signal.addEventListener('abort', cancelRead, {once: true});
+                            if (readController.signal.aborted) controller.abort();
                             const timer = setTimeout(() => controller.abort(), attempt === 0 ? 20000 : 12000);
                             try {
                                 url.searchParams.set('_refresh', Date.now().toString());
@@ -5629,10 +5689,16 @@ JSON Structure:
                             } catch (error) {
                                 const retryable = error.retryable === true || error.name === 'AbortError' ||
                                     error instanceof TypeError || error instanceof SyntaxError;
-                                if (!retryable || attempt === 1 || navigator.onLine === false) throw error;
-                            } finally { clearTimeout(timer); }
+                                if (readController.signal.aborted || !retryable || attempt === 1 || navigator.onLine === false) throw error;
+                            } finally { clearTimeout(timer); readController.signal.removeEventListener('abort', cancelRead); }
                             await new Promise(resolve => setTimeout(resolve, 500));
                         }
+                    }
+                    if (readController.signal.aborted) {
+                        if (scoreSaveWorkerRunning || hasUnsavedCloudChanges) {
+                            renderCloudRefreshStatus('waiting', 'กำลังบันทึกคะแนน • พักการรีเฟรชชั่วคราว');
+                        }
+                        return false;
                     }
                     const blockedAfterRead = cloudRefreshBlockReason();
                     if (blockedAfterRead || saveRevision !== latestScoreSave || editRevision !== cloudEditRevision) {
@@ -5648,6 +5714,7 @@ JSON Structure:
                         requestedHash && cloudData.sha256 === requestedHash &&
                         cloudRevisionHash === requestedHash && confirmedSheetPayload) {
                         cloudLoadedAt = Date.now();
+                        automaticReadFailures = 0; automaticReadRetryAfter = 0;
                         renderCloudRefreshStatus('loaded', 'ข้อมูลออนไลน์ยังเป็นรุ่นล่าสุด');
                         document.getElementById('cloud-refresh-time').textContent =
                             'ตรวจสอบสำเร็จเมื่อ ' + new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'medium' });
@@ -5675,6 +5742,7 @@ JSON Structure:
                     cloudLoadedAt = Date.now();
                     cloudRevisionHash = loadedHash;
                     clearLegacyScoreCache(loadedPayload);
+                    automaticReadFailures = 0; automaticReadRetryAfter = 0;
                     if (changed) refreshGoogleSheetViews();
                     renderCloudRefreshStatus('loaded', legacyPendingScorePayload
                         ? 'โหลดข้อมูลออนไลน์แล้ว • พบคะแนนค้างรุ่นเก่าในเครื่องนี้ โปรดดาวน์โหลดสำเนาและตรวจเทียบ'
@@ -5685,6 +5753,12 @@ JSON Structure:
                     if (indicator) indicator.textContent = '☁️ ONLINE';
                     return true;
                 } catch (error) {
+                    if (readController.signal.aborted) {
+                        if (scoreSaveWorkerRunning || hasUnsavedCloudChanges) renderCloudRefreshStatus('waiting', 'กำลังบันทึกคะแนน • พักการรีเฟรชชั่วคราว');
+                        return false;
+                    }
+                    automaticReadFailures++;
+                    automaticReadRetryAfter = Date.now() + Math.min(120000, 30000 * Math.pow(2, automaticReadFailures - 1));
                     console.error('Google Sheet load failed:', error);
                     const canKeepScores = hasConfirmedStudentData();
                     renderCloudRefreshStatus(canKeepScores ? 'waiting' : 'error', canKeepScores
@@ -5697,6 +5771,7 @@ JSON Structure:
                     return false;
                 } finally {
                     cloudLoadPromise = null;
+                    if (cloudLoadController === readController) cloudLoadController = null;
                     if (cloudRefreshRequested && !cloudRefreshBlockReason()) scheduleCloudRefresh();
                 }
             })();
@@ -5743,11 +5818,12 @@ JSON Structure:
         // Google Sheet has no push subscription. Refresh visible tabs regularly.
         setInterval(() => {
             if (document.visibilityState === 'visible') requestLatestCloudData();
-        }, 30000);
+        }, 30000 + Math.floor(Math.random() * 5000));
         window.addEventListener('pageshow', event => {
             if (event.persisted) requestLatestCloudData();
         });
         window.addEventListener('online', async () => {
+            automaticReadRetryAfter = 0;
             // Retry only our preserved pending work, and never override a known conflict.
             if (pendingSheetPayload && teacherSessionToken && !scoreSaveWorkerRunning &&
                 !['CONFLICT', 'AUTH_REQUIRED'].includes(lastScoreSaveCode)) {
