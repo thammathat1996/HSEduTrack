@@ -11,7 +11,15 @@
             const ATTEMPT_TIMEOUT_MS = 10000;
             const TOTAL_TIMEOUT_MS = 22000;
             const RETRY_BASE_DELAY_MS = 1000;
+            // Keep a cold request alive instead of restarting legitimate slow server work.
+            const INITIAL_READ_POLICY = Object.freeze({attemptTimeoutMs: 25000, totalTimeoutMs: 32000});
             let lastRead = null;
+            let readSequence = 0;
+            const readHistory = [];
+            function recordRead(entry) {
+                readHistory.push({at: new Date().toISOString(), ...entry});
+                if (readHistory.length > 20) readHistory.shift();
+            }
             function errorFor(code, status = 0, retryable = false) {
                 const error = new Error(code);
                 error.code = code;
@@ -36,16 +44,18 @@
                     url.searchParams.has('knownSha') && data.sha256 === url.searchParams.get('knownSha');
                 return classes || unchanged;
             }
-            async function attempt(url, signal, validate) {
+            async function attempt(url, signal, validate, timeoutMs) {
                 const controller = new AbortController();
                 let timer, onCancel;
+                const startedAt = performance.now();
+                let phase = 'headers', headerMs = null, responseStatus = 0;
                 const stopped = new Promise((_, reject) => {
                     onCancel = () => { controller.abort(); reject(signal.reason || errorFor('CANCELLED')); };
                     signal.addEventListener('abort', onCancel, {once: true});
                     timer = setTimeout(() => {
                         reject(errorFor('TIMEOUT', 0, true));
                         controller.abort();
-                    }, ATTEMPT_TIMEOUT_MS);
+                    }, timeoutMs);
                     if (signal.aborted) onCancel();
                 });
                 try {
@@ -53,6 +63,9 @@
                     // The timeout covers headers AND the complete response body.
                     return await Promise.race([stopped, (async () => {
                         const response = await fetch(request.url, request.options);
+                        phase = 'body';
+                        headerMs = Math.round(performance.now() - startedAt);
+                        responseStatus = response.status;
                         if (!response.ok) throw errorFor('HTTP', response.status,
                             response.status === 408 || response.status === 429 || response.status >= 500);
                         let data;
@@ -61,9 +74,23 @@
                             if (error.name === 'SyntaxError') throw errorFor('INVALID_JSON', 0, true);
                             throw error;
                         }
+                        phase = 'validate';
+                        if (data?.success === false && typeof data.code === 'string') {
+                            const knownCodes = ['BUSY', 'STORAGE_ERROR', 'CORRUPT_MANIFEST', 'CORRUPT_DATA',
+                                'MISSING_CHUNK', 'INVALID_DATA', 'AUTH_REQUIRED', 'AUTH_NOT_CONFIGURED'];
+                            const failure = errorFor('SERVER_ERROR', response.status, ['BUSY', 'STORAGE_ERROR'].includes(data.code));
+                            failure.serverCode = knownCodes.includes(data.code) ? data.code : 'UNKNOWN';
+                            throw failure;
+                        }
                         if (!validate(data, new URL(request.url))) throw errorFor('INVALID_DATA', 0, true);
-                        return {data, status: response.status};
+                        return {data, status: response.status, headerMs,
+                            bodyMs: Math.max(0, Math.round(performance.now() - startedAt) - headerMs)};
                     })()]);
+                } catch (error) {
+                    error.phase = phase;
+                    error.headerMs = headerMs;
+                    error.responseStatus = responseStatus;
+                    throw error;
                 } finally {
                     clearTimeout(timer);
                     signal.removeEventListener('abort', onCancel);
@@ -79,14 +106,19 @@
                     if (signal.aborted) finish();
                 });
             }
-            async function read(url, {signal, validate = scoreResponse, plainFallback = true, operation = 'scores-read'} = {}) {
+            async function read(url, {signal, validate = scoreResponse, plainFallback = true, operation = 'scores-read',
+                attemptTimeoutMs = ATTEMPT_TIMEOUT_MS, totalTimeoutMs = TOTAL_TIMEOUT_MS} = {}) {
+                attemptTimeoutMs = Math.max(1000, Math.min(25000, Number(attemptTimeoutMs) || ATTEMPT_TIMEOUT_MS));
+                totalTimeoutMs = Math.max(1000, Math.min(32000, Number(totalTimeoutMs) || TOTAL_TIMEOUT_MS));
                 const controller = new AbortController();
                 const cancel = () => controller.abort(errorFor('CANCELLED'));
                 signal?.addEventListener('abort', cancel, {once: true});
                 if (signal?.aborted) cancel();
-                const totalTimer = setTimeout(() => controller.abort(errorFor('TIMEOUT', 0, true)), TOTAL_TIMEOUT_MS);
+                const totalTimer = setTimeout(() => controller.abort(errorFor('TIMEOUT', 0, true)), totalTimeoutMs);
                 const startedAt = performance.now();
+                const requestId = ++readSequence;
                 let attempts = 0;
+                recordRead({requestId, operation, stage: 'started', attemptTimeoutMs, totalTimeoutMs});
                 try {
                     for (let index = 0; index < 2; index++) {
                         if (controller.signal.aborted) throw controller.signal.reason;
@@ -97,14 +129,21 @@
                         }
                         attempts++;
                         try {
-                            const result = await attempt(freshURL.toString(), controller.signal, validate);
-                            lastRead = {operation, attempts, elapsedMs: Math.round(performance.now() - startedAt), status: result.status, code: 'OK'};
+                            const result = await attempt(freshURL.toString(), controller.signal, validate, attemptTimeoutMs);
+                            lastRead = {operation, attempts, elapsedMs: Math.round(performance.now() - startedAt), status: result.status, code: 'OK',
+                                headerMs: result.headerMs, bodyMs: result.bodyMs};
+                            recordRead({requestId, stage: 'ended', ...lastRead});
                             return {data: result.data, diagnostics: {...lastRead}};
                         } catch (error) {
                             if (controller.signal.aborted) throw controller.signal.reason;
                             const code = error.code || (error.name === 'AbortError' ? 'TIMEOUT' : error instanceof TypeError ? 'NETWORK' : 'READ_ERROR');
                             const failure = errorFor(code, error.status || 0,
                                 error.retryable === true || code === 'NETWORK' || code === 'TIMEOUT');
+                            failure.serverCode = error.serverCode;
+                            recordRead({requestId, operation, stage: 'attempt-failed', attempt: attempts, code,
+                                status: failure.status, responseStatus: error.responseStatus || 0, phase: error.phase,
+                                headerMs: error.headerMs, serverCode: failure.serverCode,
+                                elapsedMs: Math.round(performance.now() - startedAt)});
                             console.warn('Google Sheet request failed', {operation, attempt: attempts, code,
                                 status: failure.status, elapsedMs: Math.round(performance.now() - startedAt)});
                             if (!failure.retryable || index === 1 || navigator.onLine === false) throw failure;
@@ -112,7 +151,10 @@
                         }
                     }
                 } catch (error) {
-                    lastRead = {operation, attempts, elapsedMs: Math.round(performance.now() - startedAt), status: error.status || 0, code: error.code || 'READ_ERROR'};
+                    lastRead = {operation, attempts, elapsedMs: Math.round(performance.now() - startedAt), status: error.status || 0,
+                        code: error.code || 'READ_ERROR', serverCode: error.serverCode,
+                        phase: error.phase, headerMs: error.headerMs, responseStatus: error.responseStatus};
+                    recordRead({requestId, stage: 'ended', ...lastRead});
                     return {error, cancelled: error.code === 'CANCELLED', diagnostics: {...lastRead}};
                 } finally {
                     clearTimeout(totalTimer);
@@ -120,16 +162,18 @@
                 }
             }
             function message(error) {
+                if (error?.code === 'SERVER_ERROR') return 'Apps Script แจ้งข้อผิดพลาด (' + (error.serverCode || 'UNKNOWN') + ') กรุณาตรวจระบบจัดเก็บข้อมูล';
                 if (error?.code === 'TIMEOUT') return 'Google Sheet ตอบช้าเกินเวลาที่กำหนด กรุณากดลองอีกครั้ง';
                 if (error?.code === 'INVALID_JSON' || error?.code === 'INVALID_DATA') return 'คำตอบจาก Google Sheet ไม่ถูกต้อง กรุณากดลองอีกครั้ง';
                 if (error?.code === 'HTTP' && [401, 403].includes(error.status)) return 'เข้าถึง Google Sheet ไม่ได้ กรุณาตรวจสิทธิ์ Apps Script';
                 if (error?.code === 'HTTP') return 'Google Sheet ตอบกลับผิดพลาด (HTTP ' + error.status + ') กรุณากดลองอีกครั้ง';
                 return 'เชื่อมต่อ Google Sheet ไม่ได้ กรุณาตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง';
             }
-            window.HSCloudTransport = {prepare, read, message, diagnostics: () => lastRead && {...lastRead}};
+            window.HSCloudTransport = {prepare, read, message, initialReadPolicy: INITIAL_READ_POLICY, diagnostics: () => lastRead && {...lastRead},
+                history: () => readHistory.map(entry => ({...entry}))};
         })();
     </script>
-    <script async src="assets/cloud-read.js?v=20261005-1" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
+    <script async src="assets/cloud-read.js?v=20261005-2" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
     <link rel="stylesheet" href="assets/app.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -406,9 +450,15 @@
         .cloud-refresh-indicator[data-state="loading"] .cloud-refresh-dot,
         .cloud-refresh-indicator[data-state="waiting"] .cloud-refresh-dot { background:#D18A1B; }
         .cloud-refresh-indicator[data-state="error"] .cloud-refresh-dot { background:#B83B2D; }
+        .cloud-refresh-indicator[data-state="refreshing"] .cloud-refresh-dot,
+        .cloud-refresh-indicator[data-state="stale"] .cloud-refresh-dot { background:#454955; }
         .cloud-refresh-details { position:absolute; right:0; top:calc(100% + 9px); width:min(290px, calc(100vw - 24px)); padding:11px 13px; border:2px solid #0D0A0B; background:#F3EFF5; box-shadow:3px 3px 0 #0D0A0B; color:#0D0A0B; font-size:12px; line-height:1.5; opacity:0; pointer-events:none; transform:translateY(-4px); transition:opacity .15s ease, transform .15s ease; z-index:60; }
         .cloud-refresh-details strong { display:block; }
+        #arc-tab-btn-quiz:disabled { cursor:not-allowed; opacity:.65; }
         .cloud-refresh-details p { margin-top:4px; font-size:11px; }
+        .cloud-refresh-details::before { content:''; position:absolute; left:0; right:0; bottom:100%; height:12px; }
+        #cloud-connection-report { width:auto; height:auto; min-height:44px; margin-top:9px; padding:5px 8px; border:1px solid var(--c-slate); font-size:11px; background:var(--c-paper); color:var(--c-green); }
+        #cloud-connection-report:focus-visible { outline:2px solid var(--c-green); outline-offset:2px; }
         .cloud-refresh-indicator:hover .cloud-refresh-details,
         .cloud-refresh-indicator:focus-within .cloud-refresh-details { opacity:1; pointer-events:auto; transform:translateY(0); }
         .save-feedback button { min-height:36px; padding:6px 10px; border:2px solid currentColor; font-weight:800; background:#F3EFF5; cursor:pointer; }
@@ -432,6 +482,24 @@
         #image-viewer-img { display:block; width:auto; height:auto; max-width:100%; max-height:calc(100dvh - 138px); object-fit:contain; }
         .teacher-primary-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
         .teacher-primary-actions > button { min-height:42px; }
+        .homework-followup-dialog { width:min(680px, calc(100% - 28px)); max-height:90dvh; padding:0; color:#0D0A0B; background:#F3EFF5; border:3px solid #454955; box-shadow:7px 7px 0 #0D0A0B; overflow:auto; }
+        .homework-followup-dialog::backdrop { background:rgba(13,10,11,.65); }
+        .homework-followup-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 18px; background:#D8D6DE; border-bottom:2px solid #454955; }
+        .homework-followup-header h2 { font-size:18px; font-weight:900; }
+        .homework-followup-body { padding:18px; display:grid; gap:12px; }
+        .homework-followup-body label { display:grid; gap:6px; font-size:13px; font-weight:700; }
+        .homework-followup-body select, .homework-followup-body input, .homework-followup-body textarea { width:100%; min-width:0; padding:10px; border:2px solid #454955; background:#fff; color:#0D0A0B; font:inherit; }
+        .homework-followup-body textarea { min-height:240px; resize:vertical; font-size:14px; line-height:1.65; }
+        .homework-followup-note { font-size:12px; line-height:1.6; color:#454955; overflow-wrap:anywhere; }
+        .homework-followup-actions { display:flex; flex-wrap:wrap; gap:10px; }
+        .homework-followup-dialog button { min-height:42px; padding:8px 14px; border:2px solid #454955; background:#F3EFF5; font-weight:800; cursor:pointer; }
+        .homework-followup-dialog #homework-followup-copy { background:#72B01D; box-shadow:3px 3px 0 #0D0A0B; }
+        .homework-followup-dialog button:disabled { opacity:.5; cursor:default; }
+        #homework-followup-copy-status { min-height:20px; font-size:13px; font-weight:700; }
+        #homework-followup-copy-status[data-state="error"] { color:#a12626; }
+        @media (max-width:639px) {
+            .homework-followup-body select, .homework-followup-body input, .homework-followup-body textarea { font-size:16px; }
+        }
         .teacher-more-tools summary { min-height:42px; display:flex; align-items:center; cursor:pointer; list-style:none; }
         .teacher-more-tools summary::-webkit-details-marker { display:none; }
         .teacher-more-tools[open] summary { background:#D8D6DE; }
@@ -507,6 +575,9 @@
     <script src="assets/motion.js?v=20261001-3" defer></script>
     <link rel="stylesheet" href="assets/motion-extras.css?v=20261001-1">
     <script src="assets/motion-extras.js?v=20261001-1" defer></script>
+    <link rel="stylesheet" href="assets/experience.css?v=20261005-2">
+    <script src="assets/experience.js?v=20261005-1" defer></script>
+    <script src="assets/connection-report.js?v=20261005-1" defer></script>
 </head>
 <body class="antialiased min-h-screen flex flex-col relative z-0 bg-[#F3EFF5] text-[#0D0A0B]">
 
@@ -613,9 +684,12 @@
                     <button id="cloud-refresh-button" type="button" onclick="refreshDataWithLoading()" aria-label="โหลดข้อมูลล่าสุด" title="โหลดข้อมูลล่าสุด">
                         <span aria-hidden="true"><svg class="ui-icon icon-refresh refresh-indicator-turn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-refresh"></use></svg><svg class="ui-icon icon-clock refresh-indicator-wait" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-clock"></use></svg></span><span class="cloud-refresh-dot" aria-hidden="true"></span>
                     </button>
-                    <div class="cloud-refresh-details" role="status" aria-live="polite" aria-atomic="true">
+                    <div class="cloud-refresh-details">
+                        <div role="status" aria-live="polite" aria-atomic="true">
                         <strong id="cloud-refresh-message">พร้อมโหลดข้อมูลจาก Google Sheet</strong>
                         <p id="cloud-refresh-time">กลับมาเปิดหน้านี้ ระบบจะตรวจข้อมูลล่าสุดให้อัตโนมัติ</p>
+                        </div>
+                        <button id="cloud-connection-report" type="button">ดาวน์โหลดข้อมูลปัญหาการเชื่อมต่อ</button>
                     </div>
                 </section>
                 </div>
@@ -678,6 +752,8 @@
                                 <svg class="ui-icon icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-search"></use></svg><span id="student-search-button-label">ค้นหาข้อมูล</span>
                             </button>
                         </div>
+
+                        <div class="hs-learning-trail" aria-hidden="true"></div>
 
                         <div id="student-search-status" class="student-search-status hidden" role="status" aria-live="polite" aria-atomic="true">
                             <div class="student-search-art" aria-hidden="true">
@@ -841,7 +917,7 @@
 
                 <div class="workspace-panel border-[2px] border-[#454955] bg-[#F3EFF5] p-4 sm:p-5">
                     <p class="workspace-eyebrow mb-2">กิจกรรมเสริม</p>
-                    <button type="button" onclick="openGachaArcadeModal()" class="student-activity-link hs-motion-button"><span class="activity-label"><svg class="ui-icon icon-controller" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-controller"></use></svg><span>เล่นควิซและสะสมตัวละคร</span></span><svg class="ui-icon icon-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-arrow"></use></svg></button>
+                    <button type="button" onclick="openGachaArcadeModal()" class="student-activity-link hs-motion-button"><span class="activity-label"><svg class="ui-icon icon-controller" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-controller"></use></svg><span>ดูตัวละครสะสม</span></span><svg class="ui-icon icon-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-arrow"></use></svg></button>
                 </div>
 
             </div>
@@ -926,6 +1002,7 @@
 
                 <div class="w-full lg:w-auto">
                     <div class="teacher-primary-actions">
+                        <button id="teacher-homework-followup" type="button" onclick="openHomeworkFollowup()" class="bg-[#F3EFF5] hover:bg-[#D8D6DE] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-2 text-xs font-bold shadow-[2.5px_2.5px_0px_#0D0A0B] cursor-pointer"><svg class="ui-icon icon-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-clipboard"></use></svg><span>ตามงาน / คัดลอกข้อความ</span></button>
                         <button type="button" onclick="toggleAdminTools()" class="bg-[#72B01D] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2px] border-[#454955] px-4 py-2 text-xs font-black shadow-[2.5px_2.5px_0px_#0D0A0B] transition-colors cursor-pointer"><svg class="ui-icon icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-plus"></use></svg><span>จัดการห้อง / เพิ่มงาน</span></button>
                         <button type="button" onclick="openScannerModal()" class="bg-[#F3EFF5] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2px] border-[#454955] px-3.5 py-2 text-xs font-bold shadow-[2.5px_2.5px_0px_#0D0A0B] transition-colors cursor-pointer"><svg class="ui-icon icon-scan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-scan"></use></svg><span>ตรวจงานด้วย QR</span></button>
                         <button type="button" onclick="logoutTeacher()" class="bg-[#F3EFF5] hover:bg-[#D8D6DE] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-2 text-xs font-bold cursor-pointer"><svg class="ui-icon icon-exit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-exit"></use></svg><span>ออกจากระบบ</span></button>
@@ -1165,6 +1242,31 @@
         </div>
     </div>
 
+    <dialog id="homework-followup-dialog" class="homework-followup-dialog" aria-labelledby="homework-followup-title">
+        <div class="homework-followup-header">
+            <h2 id="homework-followup-title">ข้อความตามงาน</h2>
+            <form method="dialog"><button type="submit" aria-label="ปิดหน้าต่างตามงาน">✕</button></form>
+        </div>
+        <div class="homework-followup-body">
+            <p id="homework-followup-source" class="homework-followup-note"></p>
+            <label for="homework-followup-task">งานที่ต้องการตาม
+                <select id="homework-followup-task" onchange="updateHomeworkFollowup()" autofocus></select>
+            </label>
+            <label for="homework-followup-note">ข้อความเพิ่มเติม / กำหนดส่ง (ไม่จำเป็น)
+                <input id="homework-followup-note" type="text" placeholder="เช่น ส่งภายในวันนี้ก่อน 16:00 น. ที่ห้องพักครู" oninput="updateHomeworkFollowup()">
+            </label>
+            <p id="homework-followup-summary" class="homework-followup-note"></p>
+            <label for="homework-followup-message">ข้อความพร้อมนำไปวางใน LINE — แก้ข้อความได้ก่อนคัดลอก
+                <textarea id="homework-followup-message" oninput="homeworkFollowupMessageChanged()" spellcheck="false"></textarea>
+            </label>
+            <div class="homework-followup-actions">
+                <button id="homework-followup-copy" type="button" onclick="copyHomeworkFollowup()">คัดลอกข้อความ</button>
+                <form method="dialog"><button type="submit">ปิด</button></form>
+            </div>
+            <p id="homework-followup-copy-status" role="status" aria-live="polite"></p>
+        </div>
+    </dialog>
+
     <!-- 🔔 Custom Alert/Confirm/Prompt Modal (z-[300] Always on Top) -->
     <div id="custom-modal" class="fixed inset-0 z-[300] hidden items-center justify-center bg-[#0D0A0B]/80 backdrop-blur-sm px-4">
         <div class="bg-[#D8D6DE]  rounded-none p-0 max-w-md w-full border-[4px] border-[#454955]  shadow-[10px_10px_0px_#0D0A0B]  relative overflow-hidden">
@@ -1323,7 +1425,7 @@
             <div class="border-b-[2.5px] border-[#454955] bg-[#D8D6DE] h-12 flex justify-between items-center px-4 sm:px-6 shrink-0">
                 <div class="flex items-center gap-2.5">
                     <span class="w-3 h-3 bg-[#3F7D20] border border-[#454955] inline-block"></span>
-                    <span class="text-xs sm:text-sm font-black uppercase tracking-wider text-[#0D0A0B]">04 // GACHA & QUIZ STUDIO</span>
+                    <span class="text-xs sm:text-sm font-black uppercase tracking-wider text-[#0D0A0B]">04 // COLLECTION STUDIO</span>
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="bg-[#F3EFF5] text-[#0D0A0B] px-2.5 py-1 border-[1.5px] border-[#454955] text-[11px] font-black shadow-[2px_2px_0px_#0D0A0B]">🎟️ คูปอง: <span id="arc-coupon-badge" class="text-[#3B741D] font-black">0</span> ใบ</span>
@@ -1335,8 +1437,8 @@
             <!-- Segmented Studio Navigation Bar -->
             <div class="bg-[#D8D6DE]/60 px-4 py-2.5 border-b-[2px] border-[#454955] flex flex-wrap items-center justify-between gap-2 shrink-0">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <button id="arc-tab-btn-quiz" onclick="switchArcadeTab('quiz')" class="bg-[#72B01D] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-1.5 text-xs font-black shadow-[2.5px_2.5px_0px_#0D0A0B] uppercase cursor-pointer transition-all">
-                        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-clipboard"></use></svg> ทำข้อสอบรับคูปอง
+                    <button id="arc-tab-btn-quiz" disabled aria-disabled="true" title="คุณครูปิดโหมดควิซแล้ว" class="bg-[#D8D6DE] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-1.5 text-xs font-black shadow-[2.5px_2.5px_0px_#0D0A0B] uppercase transition-all">
+                        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-clipboard"></use></svg> ควิซปิดโดยครู
                     </button>
                     <button id="arc-tab-btn-gacha" onclick="switchArcadeTab('gacha')" class="bg-[#F3EFF5] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-1.5 text-xs font-black shadow-[2.5px_2.5px_0px_#0D0A0B] uppercase cursor-pointer transition-all">
                         <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-dice"></use></svg> ตู้สุ่มกาชา
@@ -1345,7 +1447,7 @@
                         <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-book"></use></svg> ตู้โชว์สะสม (<span id="arc-species-count">0/118</span>)
                     </button>
                     <button id="arc-tab-btn-score" onclick="switchArcadeTab('score')" class="bg-[#F3EFF5] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-1.5 text-xs font-black shadow-[2.5px_2.5px_0px_#0D0A0B] uppercase cursor-pointer transition-all">
-                        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-chart"></use></svg> ตารางคะแนนดิบ
+                        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-chart"></use></svg> สรุปการสะสม
                     </button>
                 </div>
             </div>
@@ -1503,21 +1605,21 @@
                     <div class="bg-[#F3EFF5] p-5 sm:p-6 border-[2.5px] border-[#454955] shadow-[5px_5px_0px_#0D0A0B]">
                         <div class="flex items-center justify-between border-b-[2px] border-[#454955] pb-3 mb-4">
                             <div>
-                                <h4 class="text-base sm:text-lg font-black uppercase text-[#0D0A0B]">📊 ตารางคำนวณคะแนนโบนัสกาชาสะสม</h4>
-                                <p class="text-xs text-[#3B741D] font-bold">นำไปบวกเพิ่มในคะแนนรวมอัตโนมัติ (สูงสุดไม่เกิน +10.00 คะแนน)</p>
+                                <h4 class="text-base sm:text-lg font-black uppercase text-[#0D0A0B]">📊 ตัวละครสะสม</h4>
+                                <p class="text-xs text-[#3B741D] font-bold">ควิซและกาชาไม่นำมารวมคะแนนและเกรด</p>
                             </div>
                             <div class="text-right bg-[#72B01D] text-[#0D0A0B] px-4 py-2 border-[2px] border-[#454955]">
-                                <p class="text-[10px] font-bold uppercase">โบนัสรวม</p>
+                                <p class="text-[10px] font-bold uppercase">คะแนนที่นำมารวม</p>
                                 <p id="gscore-total-val" class="text-xl sm:text-2xl font-black">+0.00</p>
                             </div>
                         </div>
                         <div class="space-y-2">
-                            <div class="flex items-center justify-between bg-[#D8D6DE] p-3 border-[1.5px] border-[#454955]"><span class="text-xs font-black text-[#0D0A0B]">🏆 ชนิดตัวละครที่ไม่ซ้ำกัน (+0.05/ชนิด)</span><span id="gscore-unique-count" class="text-xs font-black bg-[#72B01D] text-[#0D0A0B] px-2.5 py-1 border border-[#454955]">0 ชนิด (+0.00)</span></div>
-                            <div class="flex items-center justify-between bg-[#F3EFF5] p-3 border-[1.5px] border-[#454955]"><span class="text-xs font-black text-[#0D0A0B]">★ MYTHIC (+0.30/ตัว)</span><span id="gscore-mythic-count" class="text-xs font-black bg-[#D8D6DE] text-[#0D0A0B] px-2.5 py-1 border border-[#454955]">0 ตัว (+0.00)</span></div>
-                            <div class="flex items-center justify-between bg-[#D8D6DE] p-3 border-[1.5px] border-[#454955]"><span class="text-xs font-black text-[#0D0A0B]">◆ LEGENDARY (+0.10/ตัว)</span><span id="gscore-leg-count" class="text-xs font-black bg-[#F3EFF5] text-[#0D0A0B] px-2.5 py-1 border border-[#454955]">0 ตัว (+0.00)</span></div>
-                            <div class="flex items-center justify-between bg-[#F3EFF5] p-3 border-[1.5px] border-[#454955]"><span class="text-xs font-black text-[#0D0A0B]">▲ EPIC (+0.05/ตัว)</span><span id="gscore-epic-count" class="text-xs font-black bg-[#D8D6DE] text-[#0D0A0B] px-2.5 py-1 border border-[#454955]">0 ตัว (+0.00)</span></div>
-                            <div class="flex items-center justify-between bg-[#D8D6DE] p-3 border-[1.5px] border-[#454955]"><span class="text-xs font-black text-[#0D0A0B]">✦ SPECIAL (+0.02/ตัว)</span><span id="gscore-spec-count" class="text-xs font-black bg-[#F3EFF5] text-[#0D0A0B] px-2.5 py-1 border border-[#454955]">0 ตัว (+0.00)</span></div>
-                            <div class="flex items-center justify-between bg-[#F3EFF5] p-3 border-[1.5px] border-[#454955]"><span class="text-xs font-black text-[#0D0A0B]">● RARE (+0.01/ตัว)</span><span id="gscore-rare-count" class="text-xs font-black bg-[#D8D6DE] text-[#0D0A0B] px-2.5 py-1 border border-[#454955]">0 ตัว (+0.00)</span></div>
+                            <div class="flex items-center justify-between bg-[#D8D6DE] p-3 border-[1.5px] border-[#454955]"><span class="text-xs font-black text-[#0D0A0B]">🏆 ชนิดตัวละครที่ไม่ซ้ำกัน</span><span id="gscore-unique-count" class="text-xs font-black bg-[#72B01D] text-[#0D0A0B] px-2.5 py-1 border border-[#454955]">0 ชนิด</span></div>
+                            <div class="flex items-center justify-between bg-[#F3EFF5] p-3 border-[1.5px] border-[#454955]"><span class="text-xs font-black text-[#0D0A0B]">★ MYTHIC</span><span id="gscore-mythic-count" class="text-xs font-black bg-[#D8D6DE] text-[#0D0A0B] px-2.5 py-1 border border-[#454955]">0 ตัว</span></div>
+                            <div class="flex items-center justify-between bg-[#D8D6DE] p-3 border-[1.5px] border-[#454955]"><span class="text-xs font-black text-[#0D0A0B]">◆ LEGENDARY</span><span id="gscore-leg-count" class="text-xs font-black bg-[#F3EFF5] text-[#0D0A0B] px-2.5 py-1 border border-[#454955]">0 ตัว</span></div>
+                            <div class="flex items-center justify-between bg-[#F3EFF5] p-3 border-[1.5px] border-[#454955]"><span class="text-xs font-black text-[#0D0A0B]">▲ EPIC</span><span id="gscore-epic-count" class="text-xs font-black bg-[#D8D6DE] text-[#0D0A0B] px-2.5 py-1 border border-[#454955]">0 ตัว</span></div>
+                            <div class="flex items-center justify-between bg-[#D8D6DE] p-3 border-[1.5px] border-[#454955]"><span class="text-xs font-black text-[#0D0A0B]">✦ SPECIAL</span><span id="gscore-spec-count" class="text-xs font-black bg-[#F3EFF5] text-[#0D0A0B] px-2.5 py-1 border border-[#454955]">0 ตัว</span></div>
+                            <div class="flex items-center justify-between bg-[#F3EFF5] p-3 border-[1.5px] border-[#454955]"><span class="text-xs font-black text-[#0D0A0B]">● RARE</span><span id="gscore-rare-count" class="text-xs font-black bg-[#D8D6DE] text-[#0D0A0B] px-2.5 py-1 border border-[#454955]">0 ตัว</span></div>
                         </div>
                     </div>
                 </div>
@@ -1574,6 +1676,7 @@
             const confirmBtn = document.getElementById('custom-modal-confirm');
 
             if (!modal) return;
+            modal.dataset.cloudViewOnly = String(opts.purpose === 'teacher-login');
 
             if (titleEl) titleEl.innerHTML = opts.title || 'แจ้งเตือน';
             if (msgEl) msgEl.innerHTML = opts.msg || '';
@@ -2167,6 +2270,8 @@
 
 
         const MAX_WEIGHT = { att: 10, mid: 20, fin: 20 };
+        const STUDENT_QUIZ_ENABLED = false;
+        const ACTIVITY_BONUS_ENABLED = false;
 
         function calculateGachaRawBonus(student) {
             if (!student || !student.caughtFish || student.caughtFish.length === 0) {
@@ -2190,16 +2295,16 @@
             const sumPts = Math.round((uniquePts + rarityPts) * 100) / 100;
             const totalCapped = Math.min(10.0, sumPts);
             return {
-                total: totalCapped,
-                uniquePts,
-                rarityPts,
+                total: ACTIVITY_BONUS_ENABLED ? totalCapped : 0,
+                uniquePts: ACTIVITY_BONUS_ENABLED ? uniquePts : 0,
+                rarityPts: ACTIVITY_BONUS_ENABLED ? rarityPts : 0,
                 uniqueCount: uniqueSet.size,
                 mythicCount, legCount, epicCount, specCount, rareCount,
-                mythicPts: mythicCount * 0.30,
-                legPts: legCount * 0.10,
-                epicPts: epicCount * 0.05,
-                specPts: specCount * 0.02,
-                rarePts: rareCount * 0.01
+                mythicPts: ACTIVITY_BONUS_ENABLED ? mythicCount * 0.30 : 0,
+                legPts: ACTIVITY_BONUS_ENABLED ? legCount * 0.10 : 0,
+                epicPts: ACTIVITY_BONUS_ENABLED ? epicCount * 0.05 : 0,
+                specPts: ACTIVITY_BONUS_ENABLED ? specCount * 0.02 : 0,
+                rarePts: ACTIVITY_BONUS_ENABLED ? rareCount * 0.01 : 0
             };
         }
 
@@ -2305,7 +2410,7 @@
             }
             if (!student) return;
             if (!student.gachaCoupons || student.gachaCoupons <= 0) {
-                showModal({ title: "คูปองไม่พอ", msg: "คุณไม่มีคูปองกาชา! โปรดทำ QUIZ เพื่อสะสมคูปองก่อนหมุนตู้กาชานะคะ", type: "alert" });
+                showModal({ title: "คูปองไม่พอ", msg: "คุณไม่มีคูปองกาชา และคุณครูปิดโหมดควิซแล้ว", type: "alert" });
                 return;
             }
             isSpinningGacha = true;
@@ -2429,12 +2534,12 @@
         function renderScoreBreakdown(student) {
             const stat = calculateGachaRawBonus(student);
             if (document.getElementById('gscore-total-val')) document.getElementById('gscore-total-val').innerText = `+${stat.total.toFixed(2)}`;
-            if (document.getElementById('gscore-unique-count')) document.getElementById('gscore-unique-count').innerText = `${stat.uniqueCount} ชนิด (+${stat.uniquePts.toFixed(2)})`;
-            if (document.getElementById('gscore-mythic-count')) document.getElementById('gscore-mythic-count').innerText = `${stat.mythicCount} ตัว (+${stat.mythicPts.toFixed(2)})`;
-            if (document.getElementById('gscore-leg-count')) document.getElementById('gscore-leg-count').innerText = `${stat.legCount} ตัว (+${stat.legPts.toFixed(2)})`;
-            if (document.getElementById('gscore-epic-count')) document.getElementById('gscore-epic-count').innerText = `${stat.epicCount} ตัว (+${stat.epicPts.toFixed(2)})`;
-            if (document.getElementById('gscore-spec-count')) document.getElementById('gscore-spec-count').innerText = `${stat.specCount} ตัว (+${stat.specPts.toFixed(2)})`;
-            if (document.getElementById('gscore-rare-count')) document.getElementById('gscore-rare-count').innerText = `${stat.rareCount} ตัว (+${stat.rarePts.toFixed(2)})`;
+            if (document.getElementById('gscore-unique-count')) document.getElementById('gscore-unique-count').innerText = `${stat.uniqueCount} ชนิด`;
+            if (document.getElementById('gscore-mythic-count')) document.getElementById('gscore-mythic-count').innerText = `${stat.mythicCount} ตัว`;
+            if (document.getElementById('gscore-leg-count')) document.getElementById('gscore-leg-count').innerText = `${stat.legCount} ตัว`;
+            if (document.getElementById('gscore-epic-count')) document.getElementById('gscore-epic-count').innerText = `${stat.epicCount} ตัว`;
+            if (document.getElementById('gscore-spec-count')) document.getElementById('gscore-spec-count').innerText = `${stat.specCount} ตัว`;
+            if (document.getElementById('gscore-rare-count')) document.getElementById('gscore-rare-count').innerText = `${stat.rareCount} ตัว`;
         }
 
 
@@ -2504,6 +2609,100 @@
 
         function assignmentStatus(value) {
             return value === undefined || value === null || value === '' ? 'missing' : value === 'submitted' ? 'pending' : 'graded';
+        }
+
+        let homeworkFollowupSnapshot = null;
+
+        function buildHomeworkFollowup(cls, taskId = '', note = '') {
+            const tasks = (cls.assignments || []).filter(task => !taskId || task.id === taskId);
+            const students = [...(cls.students || [])].sort((a, b) =>
+                (Number(a.no) || 0) - (Number(b.no) || 0) || String(a.name || '').localeCompare(String(b.name || ''), 'th'));
+            const missingStudents = new Set();
+            const groups = tasks.map(task => {
+                const missing = students.filter(student => assignmentStatus(student.scores?.[task.id]) === 'missing');
+                missing.forEach(student => missingStudents.add(student.id));
+                return { task, missing };
+            }).filter(group => group.missing.length);
+            const cleanLine = value => String(value ?? '').replace(/[\r\n\t]+/g, ' ').trim();
+            const header = '📌 แจ้งติดตามงาน ห้อง ' + cleanLine(cls.name);
+            const message = groups.length ? [header, 'นักเรียนต่อไปนี้ยังไม่มีสถานะส่งงานในระบบ กรุณาตรวจสอบและส่งงานที่ค้างนะครับ',
+                ...groups.map(({task, missing}) => '\n📝 ' + cleanLine(task.name) + ' (' + missing.length + ' คน)\n' +
+                    missing.map(student => '• ' + (student.no !== null && student.no !== undefined && student.no !== ''
+                        ? 'เลขที่ ' + cleanLine(student.no) + ' — ' : '') + cleanLine(student.name)).join('\n')),
+                note.trim() ? '\n' + note.trim() : '',
+                '\nหากส่งแล้วแต่สถานะยังไม่อัปเดต กรุณาแจ้งครูพร้อมหลักฐานการส่งงาน', 'ขอบคุณครับ'].filter(Boolean).join('\n') : '';
+            return {message, studentCount:missingStudents.size, taskCount:groups.length, selectedTaskCount:tasks.length};
+        }
+
+        function openHomeworkFollowup() {
+            if (!adminAuthenticated || document.getElementById('teacher-view').classList.contains('hidden')) return;
+            const cls = getActiveAdminClass();
+            if (!cls) {
+                showModal({title:'ยังไม่มีห้องเรียน', msg:'กรุณาเลือกหรือเพิ่มห้องเรียนก่อนสร้างข้อความตามงาน', type:'alert'});
+                return;
+            }
+            // Keep this preview consistent while background reads update the gradebook.
+            homeworkFollowupSnapshot = JSON.parse(JSON.stringify(cls));
+            const select = document.getElementById('homework-followup-task');
+            select.innerHTML = '<option value="">ทุกชิ้นงาน</option>' + (cls.assignments || []).map(task =>
+                '<option value="' + escapeHTML(task.id) + '">' + escapeHTML(task.name) + '</option>').join('');
+            const selected = document.getElementById('teacher-filter-task').value;
+            if ((cls.assignments || []).some(task => task.id === selected)) select.value = selected;
+            document.getElementById('homework-followup-note').value = '';
+            document.getElementById('homework-followup-source').textContent = 'ห้อง ' + cls.name +
+                ' • ใช้ข้อมูลขณะเปิดหน้าต่างนี้ ครบทั้งห้อง ไม่อิงตัวกรองรายชื่อ' +
+                (hasUnsavedCloudChanges || pendingScoreSaves > 0 ? ' • มีคะแนนที่ยังรอยืนยันการบันทึก ควรตรวจสอบก่อนส่งข้อความ' :
+                    cloudLoadedAt ? ' • ตรวจข้อมูลล่าสุดเมื่อ ' + new Date(cloudLoadedAt).toLocaleTimeString('th-TH') : ' • ยังไม่ได้ยืนยันข้อมูลจาก Sheet');
+            updateHomeworkFollowup();
+            document.getElementById('homework-followup-dialog').showModal();
+        }
+
+        function updateHomeworkFollowup() {
+            if (!homeworkFollowupSnapshot) return;
+            const report = buildHomeworkFollowup(homeworkFollowupSnapshot,
+                document.getElementById('homework-followup-task').value, document.getElementById('homework-followup-note').value);
+            document.getElementById('homework-followup-message').value = report.message;
+            document.getElementById('homework-followup-summary').textContent = report.studentCount
+                ? 'ยังไม่ส่ง ' + report.studentCount + ' คน / ' + report.taskCount + ' ชิ้นงาน • ส่งแล้วรอตรวจและคะแนน 0 ไม่รวมในรายชื่อ'
+                : !report.selectedTaskCount ? 'ห้องนี้ยังไม่มีชิ้นงานให้ติดตาม' : 'ไม่มีนักเรียนค้างส่งงานที่เลือก';
+            homeworkFollowupMessageChanged();
+        }
+
+        function homeworkFollowupMessageChanged() {
+            const status = document.getElementById('homework-followup-copy-status');
+            status.textContent = '';
+            status.dataset.state = '';
+            document.getElementById('homework-followup-copy').disabled = !document.getElementById('homework-followup-message').value.trim();
+        }
+
+        async function copyHomeworkFollowup() {
+            if (!adminAuthenticated || !document.getElementById('homework-followup-dialog').open) return;
+            const textarea = document.getElementById('homework-followup-message');
+            const text = textarea.value;
+            if (!text.trim()) return;
+            const button = document.getElementById('homework-followup-copy');
+            const status = document.getElementById('homework-followup-copy-status');
+            button.disabled = true;
+            let copied = false;
+            try {
+                if (navigator.clipboard?.writeText) {
+                    try { await navigator.clipboard.writeText(text); copied = true; } catch (_) { /* Local files or denied permissions use selection below. */ }
+                }
+                if (!copied) {
+                    textarea.focus();
+                    textarea.select();
+                    textarea.setSelectionRange(0, text.length);
+                    copied = document.execCommand('copy');
+                }
+                status.dataset.state = copied ? 'success' : 'error';
+                status.textContent = copied ? 'คัดลอกแล้ว เปิด LINE แล้ววางข้อความได้เลย' : 'เบราว์เซอร์ไม่อนุญาตให้คัดลอก กรุณาคัดลอกข้อความที่เลือกไว้ด้วยตนเอง';
+            } catch (_) {
+                textarea.focus(); textarea.select();
+                status.dataset.state = 'error';
+                status.textContent = 'คัดลอกอัตโนมัติไม่ได้ กรุณาคัดลอกข้อความในช่องด้วยตนเอง';
+            } finally {
+                button.disabled = !textarea.value.trim();
+            }
         }
 
         let teacherFilterClassId = null;
@@ -3620,7 +3819,7 @@
             document.getElementById('res-id').textContent = std.studentId;
             document.getElementById('res-grade').innerText = stat.grade; document.getElementById('res-score-assign').innerText = stat.assignRawSum; document.getElementById('res-score-att').innerText = stat.att;
             document.getElementById('res-score-mid').innerText = stat.mid; document.getElementById('res-score-fin').innerText = stat.fin; document.getElementById('res-score-bonus').innerText = `+${Math.round((stat.bonus + stat.gachaBonus) * 100) / 100}`;
-            document.getElementById('res-bonus-detail').textContent = 'จากครู ' + stat.bonus + ' • กิจกรรม ' + Math.round(stat.gachaBonus * 100) / 100;
+            document.getElementById('res-bonus-detail').textContent = 'คะแนนพิเศษจากครู ' + stat.bonus;
             const gstat = calculateGachaRawBonus(std);
             if (document.getElementById('res-gacha-raw-pts')) document.getElementById('res-gacha-raw-pts').innerText = `+${gstat.total.toFixed(2)}`; document.getElementById('res-score-total').innerText = stat.total;
 
@@ -3829,6 +4028,7 @@
                 msg: "กรุณากรอกรหัสผ่านสำหรับเข้าสู่แผงควบคุมระบบครูผู้สอนค่ะ",
                 type: 'prompt',
                 inputType: 'password',
+                purpose: 'teacher-login',
                 onConfirm: async (pwd) => {
                     if (!pwd || pwd.trim() === '') {
                         return showModal({ title: "⚠️ แจ้งเตือน", msg: "กรุณากรอกรหัสผ่านก่อนกดตกลงนะคะ", type: 'alert' });
@@ -4816,7 +5016,7 @@ JSON Structure:
         /* ══════════════════════════════════════════════════════════════════ */
         let currentActiveQuiz = null;
 
-        function openGachaArcadeModal(activeTab = 'quiz') {
+        function openGachaArcadeModal(activeTab = 'showcase') {
             const modal = document.getElementById('gacha-arcade-modal');
             if (modal) {
                 modal.style.zIndex = "250";
@@ -4886,6 +5086,15 @@ JSON Structure:
         }
 
         function openQuizArena() {
+            if (!STUDENT_QUIZ_ENABLED) {
+                currentActiveQuiz = null;
+                document.getElementById('qa-active-box').classList.remove('hidden');
+                document.getElementById('qa-result-panel').classList.add('hidden');
+                document.getElementById('qa-question-text').textContent = 'คุณครูปิดโหมดควิซแล้ว';
+                document.getElementById('qa-choices-container').replaceChildren();
+                document.querySelector('#qa-active-box > div:first-child p').textContent = 'ไม่สามารถเล่นควิซหรือรับรางวัลเพิ่มได้';
+                return;
+            }
             let student = null, cls = null;
             if (loggedInStudentUniqueId) {
                 for (let c of appData.classes) {
@@ -4947,6 +5156,7 @@ JSON Structure:
         }
 
         async function submitQuizAnswer(quizId, selectedIdx) {
+            if (!STUDENT_QUIZ_ENABLED) return;
             if (!currentActiveQuiz) return;
             const q = currentActiveQuiz;
             let student = null;
@@ -5217,6 +5427,7 @@ JSON Structure:
         let pendingScoreSaves = 0;
         let cloudLoadPromise = null;
         let cloudLoadController = null;
+        let deferredCloudRead = null;
         let lastScoreActivityAt = 0;
         let automaticReadRetryAfter = 0;
         let automaticReadFailures = 0;
@@ -5352,6 +5563,7 @@ JSON Structure:
             const url = new URL(GAS_URL);
             url.searchParams.set('action', 'storageInfo');
             const result = await window.HSCloudTransport.read(url.toString(), {
+                ...window.HSCloudTransport.initialReadPolicy,
                 plainFallback: false, operation: 'storage-check',
                 validate: info => Boolean(info && typeof info === 'object')
             });
@@ -5591,6 +5803,7 @@ JSON Structure:
         }
 
         async function runStudentAction(action, details = {}) {
+            if (action === 'answerQuiz' && !STUDENT_QUIZ_ENABLED) throw new Error('คุณครูปิดโหมดควิซแล้ว');
             if (hasUnsavedCloudChanges || pendingScoreSaves) throw new Error('มีข้อมูลที่ยังบันทึกไม่สำเร็จ กรุณาให้ครูตรวจสอบก่อน');
             if (!await checkSheetStorageCapacity('')) throw new Error(lastScoreSaveIssue);
             const response = await fetchGoogleSheet(GAS_URL, {
@@ -5641,6 +5854,7 @@ JSON Structure:
 
         function saveData() {
             lastScoreActivityAt = Date.now();
+            deferredCloudRead = null;
             clearTimeout(cloudRefreshTimer);
             cloudRefreshRequested = false;
             cloudLoadController?.abort(); // Give the write priority over a presentation read.
@@ -5665,7 +5879,8 @@ JSON Structure:
 
         function isCloudViewControl(element) {
             // These controls change the view, not the online scores.
-            return Boolean(element?.matches?.('#search-std-id, #teacher-student-search, #teacher-filter-task, #teacher-filter-status, #teacher-mobile-column, #teacher-class-selector, #dash-class-selector'));
+            return Boolean(element?.matches?.('#search-std-id, #teacher-student-search, #teacher-filter-task, #teacher-filter-status, #teacher-mobile-column, #teacher-class-selector, #dash-class-selector') ||
+                element?.closest?.('[data-cloud-view-only="true"]'));
         }
 
         function focusedScoreHasDraft(input) {
@@ -5693,7 +5908,7 @@ JSON Structure:
                 }
             }
             const openModal = Array.from(document.querySelectorAll('div[id$="-modal"]')).some(el =>
-                !el.classList.contains('hidden') && el.getClientRects().length > 0
+                el.dataset.cloudViewOnly !== 'true' && !el.classList.contains('hidden') && el.getClientRects().length > 0
             );
             if (openModal) return 'ปิดหน้าต่างที่กำลังใช้งาน แล้วระบบจะโหลดข้อมูลล่าสุดให้';
             return '';
@@ -5704,9 +5919,10 @@ JSON Structure:
             const button = document.getElementById('cloud-refresh-button');
             panel.dataset.state = state;
             document.getElementById('cloud-refresh-message').textContent = message;
-            button.disabled = state === 'loading';
-            button.setAttribute('aria-busy', String(state === 'loading'));
-            button.setAttribute('aria-label', state === 'loading' ? 'กำลังโหลดข้อมูลล่าสุด' : 'โหลดข้อมูลล่าสุด');
+            const reading = state === 'loading' || state === 'refreshing';
+            button.disabled = reading;
+            button.setAttribute('aria-busy', String(reading));
+            button.setAttribute('aria-label', reading ? 'กำลังตรวจข้อมูลล่าสุด ใช้งานต่อได้' : 'โหลดข้อมูลล่าสุด');
             button.title = message;
             if (state === 'loaded' || state === 'error') {
                 queueMicrotask(() => settlePendingStudentLookup(state));
@@ -5736,6 +5952,8 @@ JSON Structure:
         }
 
         function automaticReadAllowedAt() {
+            // Applying an already received response needs no additional network cooldown.
+            if (deferredCloudRead) return 0;
             return Math.max(automaticReadRetryAfter, lastScoreActivityAt + 10000,
                 cloudLoadedAt ? cloudLoadedAt + 10000 : 0);
         }
@@ -5750,18 +5968,21 @@ JSON Structure:
                 if (!cloudRefreshRequested || cloudLoadPromise || document.visibilityState !== 'visible' ||
                     navigator.onLine === false || cloudRefreshBlockReason()) return;
                 if (Date.now() < automaticReadAllowedAt()) { scheduleCloudRefresh(); return; }
-                loadDataFromCloud(true);
+                loadDataFromCloud(true, {background: true});
             }, Math.max(300, automaticReadAllowedAt() - Date.now()));
         }
 
         function requestLatestCloudData() {
             if (cloudLoadPromise || scoreSaveWorkerRunning || hasUnsavedCloudChanges || pendingScoreSaves ||
                 navigator.onLine === false) return;
+            // A failed cold start already used its bounded retry. Wait for an explicit
+            // search/refresh or a restored connection instead of restarting the spinner forever.
+            if (!cloudLoadedAt && automaticReadFailures > 0) return;
             cloudRefreshRequested = true;
             scheduleCloudRefresh();
         }
 
-        function loadDataFromCloud(checkRevision = false) {
+        function loadDataFromCloud(checkRevision = false, {background = false} = {}) {
             // Share one in-flight read; never let an older read overwrite a new edit.
             if (cloudLoadPromise) return cloudLoadPromise;
             const blocked = cloudRefreshBlockReason();
@@ -5773,15 +5994,22 @@ JSON Structure:
             cloudRefreshRequested = false;
             const saveRevision = latestScoreSave;
             const editRevision = cloudEditRevision;
-            renderCloudRefreshStatus('loading', 'กำลังโหลดข้อมูลล่าสุดจาก Google Sheet…');
+            renderCloudRefreshStatus(background && hasConfirmedStudentData() ? 'refreshing' : 'loading',
+                hasConfirmedStudentData() ? 'ค้นหาและกรอกคะแนนต่อได้ • กำลังตรวจข้อมูลใหม่เบื้องหลัง' : 'กำลังรับคะแนนจาก Google Sheet ครั้งแรก…');
             const readController = new AbortController();
             cloudLoadController = readController;
+            const slowReadTimer = !cloudLoadedAt ? setTimeout(() => {
+                if (cloudLoadController === readController && !cloudLoadedAt) {
+                    document.getElementById('cloud-refresh-message').textContent =
+                        'Google ตอบช้ากว่าปกติ กำลังรอคำตอบเดิม • หากกดค้นหาแล้ว ผลคะแนนจะเปิดให้อัตโนมัติ';
+                }
+            }, 8000) : null;
             cloudLoadPromise = Promise.resolve().then(async () => {
                 try {
                     if (!GAS_URL) throw new Error('Missing Google Sheet connection');
                     const url = new URL(GAS_URL);
                     url.searchParams.set('action', 'sync');
-                    const requestedHash = checkRevision ? cloudRevisionHash : null;
+                    let requestedHash = checkRevision ? cloudRevisionHash : null;
                     if (requestedHash) url.searchParams.set('knownSha', requestedHash);
                     // New Apps Script returns either the latest complete dataset or an
                     // unchanged receipt. Older deployments simply return the full data.
@@ -5792,7 +6020,14 @@ JSON Structure:
                         url.searchParams.delete('action');
                         url.searchParams.delete('knownSha');
                     }
-                    const result = await (earlyRead || window.HSCloudTransport.read(url.toString(), {signal: readController.signal}));
+                    const deferred = deferredCloudRead;
+                    deferredCloudRead = null;
+                    const canReuse = deferred && deferred.saveRevision === saveRevision &&
+                        deferred.editRevision === editRevision && Date.now() - deferred.receivedAt < 30000;
+                    if (canReuse) requestedHash = deferred.requestedHash;
+                    const result = canReuse ? {data: deferred.data} :
+                        await (earlyRead || window.HSCloudTransport.read(url.toString(), {
+                            ...(!cloudLoadedAt ? window.HSCloudTransport.initialReadPolicy : {}), signal: readController.signal}));
                     if (readController.signal.aborted) {
                         if (scoreSaveWorkerRunning || hasUnsavedCloudChanges) {
                             renderCloudRefreshStatus('waiting', 'กำลังบันทึกคะแนน • พักการรีเฟรชชั่วคราว');
@@ -5802,6 +6037,10 @@ JSON Structure:
                     if (result.error) throw result.error;
                     const blockedAfterRead = cloudRefreshBlockReason();
                     if (blockedAfterRead || saveRevision !== latestScoreSave || editRevision !== cloudEditRevision) {
+                        if (saveRevision === latestScoreSave && editRevision === cloudEditRevision) {
+                            deferredCloudRead = {data: result.data, saveRevision, editRevision, requestedHash,
+                                receivedAt: canReuse ? deferred.receivedAt : Date.now()};
+                        }
                         cloudRefreshRequested = true;
                         renderCloudRefreshStatus('waiting', blockedAfterRead || 'มีการแก้ไขระหว่างโหลด กำลังรอโหลดข้อมูลอีกครั้ง');
                         return false;
@@ -5830,6 +6069,10 @@ JSON Structure:
                     const loadedHash = await scorePayloadHash(loadedPayload);
                     const blockedNow = cloudRefreshBlockReason();
                     if (blockedNow || saveRevision !== latestScoreSave || editRevision !== cloudEditRevision) {
+                        if (saveRevision === latestScoreSave && editRevision === cloudEditRevision) {
+                            deferredCloudRead = {data: cloudData, saveRevision, editRevision, requestedHash,
+                                receivedAt: canReuse ? deferred.receivedAt : Date.now()};
+                        }
                         cloudRefreshRequested = true;
                         renderCloudRefreshStatus('waiting', blockedNow || 'มีการแก้ไขระหว่างโหลด กำลังรอโหลดข้อมูลอีกครั้ง');
                         return false;
@@ -5858,23 +6101,24 @@ JSON Structure:
                     }
                     automaticReadFailures++;
                     automaticReadRetryAfter = Date.now() + Math.min(120000, 30000 * Math.pow(2, automaticReadFailures - 1));
-                    cloudRefreshRequested = true;
                     console.warn('Google Sheet load ended', {code: error.code || 'READ_ERROR', status: error.status || 0});
                     const canKeepScores = hasConfirmedStudentData();
-                    renderCloudRefreshStatus(canKeepScores ? 'waiting' : 'error', canKeepScores
-                        ? 'แสดงคะแนนที่โหลดสำเร็จครั้งล่าสุดอยู่ • ยังตรวจสอบข้อมูลใหม่ไม่ได้ กดรีเฟรชเพื่อลองอีกครั้ง'
+                    cloudRefreshRequested = canKeepScores;
+                    renderCloudRefreshStatus(canKeepScores ? 'stale' : 'error', canKeepScores
+                        ? 'ค้นหาและใช้งานต่อได้ด้วยคะแนนที่ยืนยันครั้งล่าสุด • ตรวจข้อมูลใหม่ไม่สำเร็จ ระบบจะลองใหม่ภายหลัง'
                         : window.HSCloudTransport.message(error));
                     const indicator = document.getElementById('cloud-status');
                     if (indicator && !hasUnsavedCloudChanges) {
-                        indicator.textContent = canKeepScores ? '☁️ รอตรวจข้อมูลใหม่' : '☁️ โหลดไม่สำเร็จ';
+                        indicator.textContent = canKeepScores ? '☁️ ใช้ข้อมูลที่ยืนยันล่าสุด' : '☁️ โหลดไม่สำเร็จ';
                     }
                     return false;
                 } finally {
+                    clearTimeout(slowReadTimer);
                     // Only this request may clear its own controller and spinner.
                     if (cloudLoadController === readController) {
                         cloudLoadPromise = null;
                         cloudLoadController = null;
-                        if (document.getElementById('cloud-refresh-panel').dataset.state === 'loading') {
+                        if (['loading', 'refreshing'].includes(document.getElementById('cloud-refresh-panel').dataset.state)) {
                             renderCloudRefreshStatus('waiting', 'พักการโหลดข้อมูล • กดรีเฟรชเพื่อลองอีกครั้ง');
                         }
                         if (cloudRefreshRequested) scheduleCloudRefresh();
@@ -5923,13 +6167,17 @@ JSON Structure:
         window.addEventListener('focus', requestLatestCloudData);
         // Google Sheet has no push subscription. Refresh visible tabs regularly.
         setInterval(() => {
-            if (document.visibilityState === 'visible') requestLatestCloudData();
+            const idleLookup = hasConfirmedStudentData() && !pendingStudentLookup &&
+                !document.getElementById('student-view').classList.contains('hidden') &&
+                !document.getElementById('student-search-panel').classList.contains('hidden');
+            if (document.visibilityState === 'visible' && !idleLookup) requestLatestCloudData();
         }, 30000 + Math.floor(Math.random() * 5000));
         window.addEventListener('pageshow', event => {
             if (event.persisted) requestLatestCloudData();
         });
         window.addEventListener('online', async () => {
             automaticReadRetryAfter = 0;
+            automaticReadFailures = 0;
             // Retry only our preserved pending work, and never override a known conflict.
             if (pendingSheetPayload && teacherSessionToken && !scoreSaveWorkerRunning &&
                 !['CONFLICT', 'AUTH_REQUIRED'].includes(lastScoreSaveCode)) {

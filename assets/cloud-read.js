@@ -8,7 +8,8 @@
         const url = new URL(endpoint);
         url.searchParams.set('action', 'sync');
         initialController = new AbortController();
-        initial = window.HSCloudTransport.read(url.toString(), {signal: initialController.signal});
+        initial = window.HSCloudTransport.read(url.toString(), {
+            ...window.HSCloudTransport.initialReadPolicy, signal: initialController.signal});
     }
     window.HSCloudReader = {
         read: (...args) => window.HSCloudTransport.read(...args),

@@ -1,0 +1,61 @@
+/* Small, local effects for the student journey. No layout or score dependencies. */
+#student-search-panel .brand-hero-body { background-color:var(--c-paper); }
+#student-search-panel .hs-lookup-tag { box-shadow:3px 3px 0 var(--c-ink); }
+#student-search-panel h2 { text-wrap:balance; }
+#student-search-panel .hs-search-button { position:relative; isolation:isolate; overflow:hidden; }
+#student-search-panel .hs-search-button::after {
+  content:''; position:absolute; inset:0; z-index:-1; pointer-events:none;
+  background:linear-gradient(115deg,transparent 30%,rgba(243,239,245,.3) 48%,transparent 65%);
+  transform:translateX(-130%);
+}
+html[data-hs-motion=full] #student-search-panel.hs-lookup-enter .hs-search-button::after { animation:hs-button-sheen .85s .35s ease-out both; }
+#student-search-panel .student-code-input { transition:border-color .18s ease,box-shadow .18s ease; }
+#student-search-panel .student-code-input:focus:not([aria-invalid=true]) { box-shadow:6px 6px 0 var(--c-green); border-color:var(--c-ink); }
+
+/* Decorative separator. A full-width carrier moves the green mark to either edge. */
+.hs-learning-trail { --hs-runner-width:48px; position:relative; display:block; height:3px; margin-top:24px; overflow:hidden; background:var(--c-panel); pointer-events:none; }
+.hs-learning-trail::before { content:''; position:absolute; inset:0; background:linear-gradient(var(--c-lime),var(--c-lime)) left center / var(--hs-runner-width) 100% no-repeat; }
+html[data-hs-motion=full] .hs-experience-ambient .hs-learning-trail::before { animation:hs-trail-travel 3.2s ease-in-out infinite alternate; }
+html.hs-experience-paused .hs-learning-trail::before { animation-play-state:paused !important; }
+
+/* Paper layers and green registration marks carry the existing Neo Brutalist theme. */
+#student-score-summary { position:relative; background:linear-gradient(140deg,rgba(114,176,29,.055),transparent 45%),var(--c-paper); }
+#student-score-summary::before { content:''; position:absolute; top:-2px; left:18px; width:38px; height:4px; background:var(--c-lime); pointer-events:none; }
+#student-result .student-quick-card { box-shadow:3px 3px 0 var(--c-ink); }
+#student-result .student-quick-card:not([data-attention=true]) { background:var(--c-paper); }
+#student-result .student-quick-card strong { font-variant-numeric:tabular-nums; }
+#student-result .student-quick-card[data-task-filter=graded],
+#student-result .student-quick-card[onclick*="'graded'"] { background:#E6EEDC; }
+#res-grade-card { border-color:var(--c-green) !important; }
+#res-score-total { font-variant-numeric:tabular-nums; }
+#res-progress-bar::after { background:repeating-linear-gradient(135deg,transparent 0 9px,rgba(243,239,245,.22) 9px 12px); }
+html[data-hs-motion=full] #student-score-summary.hs-score-arrived #res-progress-bar::after { animation:hs-score-stripe .75s ease-out; }
+.hs-score-arrived #res-score-total::after { transform-origin:left; }
+html[data-hs-motion=full] .hs-score-arrived #res-score-total::after { animation:hs-score-mark .65s ease-out; }
+
+/* Effects never intercept a button, a score field, or scrolling. */
+.hs-delight-layer { position:fixed; inset:0; z-index:105; pointer-events:none; overflow:hidden; contain:strict; }
+.hs-delight-chip { position:absolute; width:7px; height:11px; border:1.5px solid var(--c-ink); background:var(--c-lime); pointer-events:none; }
+.hs-delight-chip:nth-child(3n) { width:9px; height:9px; background:var(--c-paper); }
+.hs-delight-chip:nth-child(3n + 1) { background:var(--c-green); }
+.hs-press-ring { position:absolute; width:14px; height:14px; border:2px solid var(--c-ink); background:rgba(114,176,29,.2); pointer-events:none; }
+.hs-delight-chip, .hs-press-ring { opacity:0; }
+
+@keyframes hs-button-sheen { to { transform:translateX(130%); } }
+@keyframes hs-trail-travel { 0%,8% { transform:translateX(0); } 92%,100% { transform:translateX(calc(100% - var(--hs-runner-width))); } }
+@keyframes hs-score-stripe { from { transform:translateX(-20px); } to { transform:translateX(0); } }
+@keyframes hs-score-mark { from { transform:scaleX(.1); } to { transform:scaleX(1); } }
+@media (hover:hover) and (pointer:fine) {
+  #student-search-panel .hs-search-button:hover { transform:translate(-2px,-2px); box-shadow:5px 5px 0 var(--c-ink); }
+  #student-result .student-quick-card:hover { transform:translate(-2px,-2px); box-shadow:5px 5px 0 var(--c-green); }
+  #student-result .student-task-row:hover { box-shadow:3px 3px 0 var(--c-green); }
+}
+@media (max-width:639px) {
+  .hs-learning-trail { --hs-runner-width:36px; margin-top:20px; }
+}
+html[data-hs-motion=reduced] .hs-learning-trail::before,
+html[data-hs-motion=reduced] .hs-search-button::after,
+html[data-hs-motion=reduced] #res-progress-bar::after { animation:none !important; }
+html[data-hs-motion=reduced] .hs-delight-layer { display:none; }
+html[data-hs-motion=reduced] #student-result .student-quick-card:hover { transform:none; }
+@media print { .hs-delight-layer { display:none !important; } }
