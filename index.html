@@ -4,7 +4,132 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>HongSon EduTrack | ตรวจสอบคะแนนนักเรียน</title>
-    <script async src="assets/cloud-read.js?v=20261002-3" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
+    <script>
+        // One transport policy for the early read, fallback and Google requests.
+        // Keep it inline so a missing or delayed bootstrap asset cannot block scores.
+        (() => {
+            const ATTEMPT_TIMEOUT_MS = 10000;
+            const TOTAL_TIMEOUT_MS = 22000;
+            const RETRY_BASE_DELAY_MS = 1000;
+            let lastRead = null;
+            function errorFor(code, status = 0, retryable = false) {
+                const error = new Error(code);
+                error.code = code;
+                error.status = status;
+                error.retryable = retryable;
+                return error;
+            }
+            function prepare(url, options = {}) {
+                const freshURL = new URL(url);
+                freshURL.searchParams.set('_refresh', Date.now().toString());
+                return {url: freshURL.toString(), options: {
+                    ...options, credentials: 'omit', mode: 'cors', redirect: 'follow', cache: 'no-store'
+                }};
+            }
+            function scoreResponse(data, url) {
+                const classes = data && Array.isArray(data.classes) && data.classes.every(c =>
+                    c && typeof c.id === 'string' && typeof c.name === 'string' &&
+                    Array.isArray(c.students) && Array.isArray(c.assignments));
+                const unchanged = data?.unchanged === true && data.success === true &&
+                    data.readFormat === 'EDUTRACK_FAST_READ_V1' &&
+                    data.storageFormat === 'EDUTRACK_CHUNKS_V1' &&
+                    url.searchParams.has('knownSha') && data.sha256 === url.searchParams.get('knownSha');
+                return classes || unchanged;
+            }
+            async function attempt(url, signal, validate) {
+                const controller = new AbortController();
+                let timer, onCancel;
+                const stopped = new Promise((_, reject) => {
+                    onCancel = () => { controller.abort(); reject(signal.reason || errorFor('CANCELLED')); };
+                    signal.addEventListener('abort', onCancel, {once: true});
+                    timer = setTimeout(() => {
+                        reject(errorFor('TIMEOUT', 0, true));
+                        controller.abort();
+                    }, ATTEMPT_TIMEOUT_MS);
+                    if (signal.aborted) onCancel();
+                });
+                try {
+                    const request = prepare(url, {method: 'GET', signal: controller.signal});
+                    // The timeout covers headers AND the complete response body.
+                    return await Promise.race([stopped, (async () => {
+                        const response = await fetch(request.url, request.options);
+                        if (!response.ok) throw errorFor('HTTP', response.status,
+                            response.status === 408 || response.status === 429 || response.status >= 500);
+                        let data;
+                        try { data = await response.json(); }
+                        catch (error) {
+                            if (error.name === 'SyntaxError') throw errorFor('INVALID_JSON', 0, true);
+                            throw error;
+                        }
+                        if (!validate(data, new URL(request.url))) throw errorFor('INVALID_DATA', 0, true);
+                        return {data, status: response.status};
+                    })()]);
+                } finally {
+                    clearTimeout(timer);
+                    signal.removeEventListener('abort', onCancel);
+                    controller.abort();
+                }
+            }
+            function pause(ms, signal) {
+                return new Promise(resolve => {
+                    let timer;
+                    const finish = () => { clearTimeout(timer); signal.removeEventListener('abort', finish); resolve(); };
+                    signal.addEventListener('abort', finish, {once: true});
+                    timer = setTimeout(finish, ms);
+                    if (signal.aborted) finish();
+                });
+            }
+            async function read(url, {signal, validate = scoreResponse, plainFallback = true, operation = 'scores-read'} = {}) {
+                const controller = new AbortController();
+                const cancel = () => controller.abort(errorFor('CANCELLED'));
+                signal?.addEventListener('abort', cancel, {once: true});
+                if (signal?.aborted) cancel();
+                const totalTimer = setTimeout(() => controller.abort(errorFor('TIMEOUT', 0, true)), TOTAL_TIMEOUT_MS);
+                const startedAt = performance.now();
+                let attempts = 0;
+                try {
+                    for (let index = 0; index < 2; index++) {
+                        if (controller.signal.aborted) throw controller.signal.reason;
+                        const freshURL = new URL(url);
+                        if (index > 0 && plainFallback) {
+                            freshURL.searchParams.delete('action');
+                            freshURL.searchParams.delete('knownSha');
+                        }
+                        attempts++;
+                        try {
+                            const result = await attempt(freshURL.toString(), controller.signal, validate);
+                            lastRead = {operation, attempts, elapsedMs: Math.round(performance.now() - startedAt), status: result.status, code: 'OK'};
+                            return {data: result.data, diagnostics: {...lastRead}};
+                        } catch (error) {
+                            if (controller.signal.aborted) throw controller.signal.reason;
+                            const code = error.code || (error.name === 'AbortError' ? 'TIMEOUT' : error instanceof TypeError ? 'NETWORK' : 'READ_ERROR');
+                            const failure = errorFor(code, error.status || 0,
+                                error.retryable === true || code === 'NETWORK' || code === 'TIMEOUT');
+                            console.warn('Google Sheet request failed', {operation, attempt: attempts, code,
+                                status: failure.status, elapsedMs: Math.round(performance.now() - startedAt)});
+                            if (!failure.retryable || index === 1 || navigator.onLine === false) throw failure;
+                            await pause(RETRY_BASE_DELAY_MS * Math.pow(2, index), controller.signal);
+                        }
+                    }
+                } catch (error) {
+                    lastRead = {operation, attempts, elapsedMs: Math.round(performance.now() - startedAt), status: error.status || 0, code: error.code || 'READ_ERROR'};
+                    return {error, cancelled: error.code === 'CANCELLED', diagnostics: {...lastRead}};
+                } finally {
+                    clearTimeout(totalTimer);
+                    signal?.removeEventListener('abort', cancel);
+                }
+            }
+            function message(error) {
+                if (error?.code === 'TIMEOUT') return 'Google Sheet ตอบช้าเกินเวลาที่กำหนด กรุณากดลองอีกครั้ง';
+                if (error?.code === 'INVALID_JSON' || error?.code === 'INVALID_DATA') return 'คำตอบจาก Google Sheet ไม่ถูกต้อง กรุณากดลองอีกครั้ง';
+                if (error?.code === 'HTTP' && [401, 403].includes(error.status)) return 'เข้าถึง Google Sheet ไม่ได้ กรุณาตรวจสิทธิ์ Apps Script';
+                if (error?.code === 'HTTP') return 'Google Sheet ตอบกลับผิดพลาด (HTTP ' + error.status + ') กรุณากดลองอีกครั้ง';
+                return 'เชื่อมต่อ Google Sheet ไม่ได้ กรุณาตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง';
+            }
+            window.HSCloudTransport = {prepare, read, message, diagnostics: () => lastRead && {...lastRead}};
+        })();
+    </script>
+    <script async src="assets/cloud-read.js?v=20261005-1" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
     <link rel="stylesheet" href="assets/app.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -184,8 +309,7 @@
         .save-feedback[data-state="saving"]::before,
         .save-feedback[data-state="verifying"]::before { animation:pulse-green 1.2s ease-in-out infinite; }
         @keyframes refresh-turn { to { transform:rotate(360deg); } }
-        .cloud-refresh-indicator[data-state="loading"] #cloud-refresh-button > span:first-child,
-        .cloud-refresh-indicator[data-state="waiting"] #cloud-refresh-button > span:first-child {
+        .cloud-refresh-indicator[data-state="loading"] #cloud-refresh-button > span:first-child {
             display:inline-block; animation:refresh-turn 1s linear infinite;
         }
         #res-missing-card { transition:transform .18s ease, box-shadow .18s ease; }
@@ -3715,7 +3839,7 @@
                             const controller = new AbortController();
                             const timer = setTimeout(() => controller.abort(), 15000);
                             try {
-                                const response = await fetch(GAS_URL, {
+                                const response = await fetchGoogleSheet(GAS_URL, {
                                     method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                                     redirect: 'follow', signal: controller.signal,
                                     body: JSON.stringify({ action: 'authenticate', password: pwd.trim() })
@@ -5114,7 +5238,7 @@ JSON Structure:
             try {
                 const url = new URL(GAS_URL);
                 url.searchParams.set('_refresh', Date.now().toString());
-                const response = await fetch(url.toString(), {
+                const response = await fetchGoogleSheet(url.toString(), {
                     method: 'GET', redirect: 'follow', cache: 'no-store', signal: controller.signal
                 });
                 if (!response.ok) return false;
@@ -5215,33 +5339,31 @@ JSON Structure:
             pendingScoreSaves = Number(Boolean(activeScoreSnapshot)) + Number(Boolean(queuedScoreSnapshot));
         }
 
+        // Preserve write deadlines and confirmation; share only anonymous request options.
+        function fetchGoogleSheet(url, options) {
+            const request = window.HSCloudTransport.prepare(url, options);
+            return fetch(request.url, request.options);
+        }
+
         let secureBackendAvailable = false;
 
         async function checkSheetStorageCapacity(payload) {
             if (secureBackendAvailable) return true;
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), SAVE_CONFIRM_TIMEOUT_MS);
-            try {
-                const url = new URL(GAS_URL);
-                url.searchParams.set('action', 'storageInfo');
-                url.searchParams.set('_refresh', Date.now().toString());
-                const response = await fetch(url.toString(), {
-                    method: 'GET', redirect: 'follow', cache: 'no-store', signal: controller.signal
-                });
-                if (!response.ok) throw new Error('Storage check failed');
-                const info = await response.json();
-                if (info.success === true && info.storageFormat === 'EDUTRACK_CHUNKS_V1' &&
-                    info.securityFormat === 'EDUTRACK_TEACHER_AUTH_V1') {
-                    secureBackendAvailable = true;
-                    return true;
-                }
-                lastScoreSaveIssue = 'กรุณาอัปเดต Apps Script เป็นรุ่นตรวจสิทธิ์และกันข้อมูลทับ แล้ว Deploy เวอร์ชันใหม่ คะแนนที่แก้ไขยังอยู่ในหน้านี้ กรุณาลองบันทึกหรือดาวน์โหลดสำเนาก่อนปิดหน้า';
-            } catch (_) {
-                lastScoreSaveIssue = 'เชื่อมต่อเพื่อตรวจสอบระบบจัดเก็บไม่ได้ กรุณาตรวจอินเทอร์เน็ตแล้วลองบันทึกอีกครั้ง คะแนนที่แก้ไขยังอยู่ในหน้านี้ กรุณาลองบันทึกหรือดาวน์โหลดสำเนาก่อนปิดหน้า';
-            } finally {
-                clearTimeout(timer);
+            const url = new URL(GAS_URL);
+            url.searchParams.set('action', 'storageInfo');
+            const result = await window.HSCloudTransport.read(url.toString(), {
+                plainFallback: false, operation: 'storage-check',
+                validate: info => Boolean(info && typeof info === 'object')
+            });
+            if (!result.error && result.data.success === true &&
+                result.data.storageFormat === 'EDUTRACK_CHUNKS_V1' &&
+                result.data.securityFormat === 'EDUTRACK_TEACHER_AUTH_V1') {
+                secureBackendAvailable = true;
+                return true;
             }
-            // Retry failed capability checks so a new deployment works in this same tab.
+            lastScoreSaveIssue = result.error
+                ? window.HSCloudTransport.message(result.error) + ' คะแนนที่แก้ไขยังอยู่ในหน้านี้ กรุณาลองบันทึกหรือดาวน์โหลดสำเนาก่อนปิดหน้า'
+                : 'กรุณาอัปเดต Apps Script เป็นรุ่นตรวจสิทธิ์และกันข้อมูลทับ แล้ว Deploy เวอร์ชันใหม่ คะแนนที่แก้ไขยังอยู่ในหน้านี้ กรุณาลองบันทึกหรือดาวน์โหลดสำเนาก่อนปิดหน้า';
             return false;
         }
 
@@ -5295,7 +5417,7 @@ JSON Structure:
                     const remaining = SAVE_MAX_LIFETIME_MS - (Date.now() - startedAt);
                     const timer = setTimeout(() => controller.abort(), Math.max(1, Math.min(timeout, remaining)));
                     try {
-                        const response = await fetch(url, {...options, redirect: 'follow', signal: controller.signal});
+                        const response = await fetchGoogleSheet(url, {...options, redirect: 'follow', signal: controller.signal});
                         if (!response.ok) throw new Error('Save HTTP ' + response.status);
                         return await response.json();
                     } finally {
@@ -5471,7 +5593,7 @@ JSON Structure:
         async function runStudentAction(action, details = {}) {
             if (hasUnsavedCloudChanges || pendingScoreSaves) throw new Error('มีข้อมูลที่ยังบันทึกไม่สำเร็จ กรุณาให้ครูตรวจสอบก่อน');
             if (!await checkSheetStorageCapacity('')) throw new Error(lastScoreSaveIssue);
-            const response = await fetch(GAS_URL, {
+            const response = await fetchGoogleSheet(GAS_URL, {
                 method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 redirect: 'follow', body: JSON.stringify({
                     action, classId: loggedInStudentClassId,
@@ -5583,6 +5705,7 @@ JSON Structure:
             panel.dataset.state = state;
             document.getElementById('cloud-refresh-message').textContent = message;
             button.disabled = state === 'loading';
+            button.setAttribute('aria-busy', String(state === 'loading'));
             button.setAttribute('aria-label', state === 'loading' ? 'กำลังโหลดข้อมูลล่าสุด' : 'โหลดข้อมูลล่าสุด');
             button.title = message;
             if (state === 'loaded' || state === 'error') {
@@ -5612,17 +5735,28 @@ JSON Structure:
             }
         }
 
+        function automaticReadAllowedAt() {
+            return Math.max(automaticReadRetryAfter, lastScoreActivityAt + 10000,
+                cloudLoadedAt ? cloudLoadedAt + 10000 : 0);
+        }
+
         function scheduleCloudRefresh() {
             clearTimeout(cloudRefreshTimer);
+            cloudRefreshTimer = null;
+            if (!cloudRefreshRequested || cloudLoadPromise || document.visibilityState !== 'visible' ||
+                navigator.onLine === false || cloudRefreshBlockReason()) return;
             cloudRefreshTimer = setTimeout(() => {
-                if (cloudRefreshRequested && document.visibilityState === 'visible') loadDataFromCloud(true);
-            }, 300);
+                cloudRefreshTimer = null;
+                if (!cloudRefreshRequested || cloudLoadPromise || document.visibilityState !== 'visible' ||
+                    navigator.onLine === false || cloudRefreshBlockReason()) return;
+                if (Date.now() < automaticReadAllowedAt()) { scheduleCloudRefresh(); return; }
+                loadDataFromCloud(true);
+            }, Math.max(300, automaticReadAllowedAt() - Date.now()));
         }
 
         function requestLatestCloudData() {
-            if (scoreSaveWorkerRunning || hasUnsavedCloudChanges || pendingScoreSaves ||
-                Date.now() - lastScoreActivityAt < 10000 || Date.now() < automaticReadRetryAfter ||
-                (cloudLoadedAt && Date.now() - cloudLoadedAt < 10000)) return;
+            if (cloudLoadPromise || scoreSaveWorkerRunning || hasUnsavedCloudChanges || pendingScoreSaves ||
+                navigator.onLine === false) return;
             cloudRefreshRequested = true;
             scheduleCloudRefresh();
         }
@@ -5642,7 +5776,7 @@ JSON Structure:
             renderCloudRefreshStatus('loading', 'กำลังโหลดข้อมูลล่าสุดจาก Google Sheet…');
             const readController = new AbortController();
             cloudLoadController = readController;
-            cloudLoadPromise = (async () => {
+            cloudLoadPromise = Promise.resolve().then(async () => {
                 try {
                     if (!GAS_URL) throw new Error('Missing Google Sheet connection');
                     const url = new URL(GAS_URL);
@@ -5652,61 +5786,26 @@ JSON Structure:
                     // New Apps Script returns either the latest complete dataset or an
                     // unchanged receipt. Older deployments simply return the full data.
                     window.HSInitialCloudReadStarted = true;
-                    const earlyRead = !cloudLoadedAt && window.HSCloudReader?.takeInitial(GAS_URL);
-                    let result;
-                    if (window.HSCloudReader) {
-                        result = await (earlyRead || window.HSCloudReader.read(url.toString(), {signal: readController.signal}));
-                    } else {
-                        // The original GET also works if the optional optimized reader is unavailable.
+                    const earlyRead = !cloudLoadedAt && window.HSCloudReader?.takeInitial(GAS_URL, {signal: readController.signal});
+                    if (!window.HSCloudReader) {
+                        // The same bounded reader works even if the bootstrap asset is missing.
                         url.searchParams.delete('action');
                         url.searchParams.delete('knownSha');
-                        for (let attempt = 0; attempt < 2; attempt++) {
-                            const controller = new AbortController();
-                            const cancelRead = () => controller.abort();
-                            readController.signal.addEventListener('abort', cancelRead, {once: true});
-                            if (readController.signal.aborted) controller.abort();
-                            const timer = setTimeout(() => controller.abort(), attempt === 0 ? 20000 : 12000);
-                            try {
-                                url.searchParams.set('_refresh', Date.now().toString());
-                                const response = await fetch(url.toString(), {
-                                    method: 'GET', redirect: 'follow', cache: 'no-store', signal: controller.signal
-                                });
-                                if (!response.ok) {
-                                    const error = new Error('Load HTTP ' + response.status);
-                                    error.retryable = response.status === 408 || response.status === 429 || response.status >= 500;
-                                    throw error;
-                                }
-                                const data = await response.json();
-                                if (!data || !Array.isArray(data.classes) || !data.classes.every(c =>
-                                    c && typeof c.id === 'string' && typeof c.name === 'string' &&
-                                    Array.isArray(c.students) && Array.isArray(c.assignments))) {
-                                    const error = new Error('Invalid online score response');
-                                    error.retryable = true;
-                                    throw error;
-                                }
-                                result = {data};
-                                break;
-                            } catch (error) {
-                                const retryable = error.retryable === true || error.name === 'AbortError' ||
-                                    error instanceof TypeError || error instanceof SyntaxError;
-                                if (readController.signal.aborted || !retryable || attempt === 1 || navigator.onLine === false) throw error;
-                            } finally { clearTimeout(timer); readController.signal.removeEventListener('abort', cancelRead); }
-                            await new Promise(resolve => setTimeout(resolve, 500));
-                        }
                     }
+                    const result = await (earlyRead || window.HSCloudTransport.read(url.toString(), {signal: readController.signal}));
                     if (readController.signal.aborted) {
                         if (scoreSaveWorkerRunning || hasUnsavedCloudChanges) {
                             renderCloudRefreshStatus('waiting', 'กำลังบันทึกคะแนน • พักการรีเฟรชชั่วคราว');
                         }
                         return false;
                     }
+                    if (result.error) throw result.error;
                     const blockedAfterRead = cloudRefreshBlockReason();
                     if (blockedAfterRead || saveRevision !== latestScoreSave || editRevision !== cloudEditRevision) {
                         cloudRefreshRequested = true;
                         renderCloudRefreshStatus('waiting', blockedAfterRead || 'มีการแก้ไขระหว่างโหลด กำลังรอโหลดข้อมูลอีกครั้ง');
                         return false;
                     }
-                    if (result.error) throw result.error;
                     const cloudData = result.data;
                     if (cloudData?.unchanged === true && cloudData.success === true &&
                         cloudData.readFormat === 'EDUTRACK_FAST_READ_V1' &&
@@ -5759,22 +5858,29 @@ JSON Structure:
                     }
                     automaticReadFailures++;
                     automaticReadRetryAfter = Date.now() + Math.min(120000, 30000 * Math.pow(2, automaticReadFailures - 1));
-                    console.error('Google Sheet load failed:', error);
+                    cloudRefreshRequested = true;
+                    console.warn('Google Sheet load ended', {code: error.code || 'READ_ERROR', status: error.status || 0});
                     const canKeepScores = hasConfirmedStudentData();
                     renderCloudRefreshStatus(canKeepScores ? 'waiting' : 'error', canKeepScores
                         ? 'แสดงคะแนนที่โหลดสำเร็จครั้งล่าสุดอยู่ • ยังตรวจสอบข้อมูลใหม่ไม่ได้ กดรีเฟรชเพื่อลองอีกครั้ง'
-                        : 'โหลดคะแนนออนไลน์ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง');
+                        : window.HSCloudTransport.message(error));
                     const indicator = document.getElementById('cloud-status');
                     if (indicator && !hasUnsavedCloudChanges) {
                         indicator.textContent = canKeepScores ? '☁️ รอตรวจข้อมูลใหม่' : '☁️ โหลดไม่สำเร็จ';
                     }
                     return false;
                 } finally {
-                    cloudLoadPromise = null;
-                    if (cloudLoadController === readController) cloudLoadController = null;
-                    if (cloudRefreshRequested && !cloudRefreshBlockReason()) scheduleCloudRefresh();
+                    // Only this request may clear its own controller and spinner.
+                    if (cloudLoadController === readController) {
+                        cloudLoadPromise = null;
+                        cloudLoadController = null;
+                        if (document.getElementById('cloud-refresh-panel').dataset.state === 'loading') {
+                            renderCloudRefreshStatus('waiting', 'พักการโหลดข้อมูล • กดรีเฟรชเพื่อลองอีกครั้ง');
+                        }
+                        if (cloudRefreshRequested) scheduleCloudRefresh();
+                    }
                 }
-            })();
+            });
             return cloudLoadPromise;
         }
 
