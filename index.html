@@ -12,7 +12,7 @@
             const TOTAL_TIMEOUT_MS = 22000;
             const RETRY_BASE_DELAY_MS = 1000;
             // Keep a cold request alive instead of restarting legitimate slow server work.
-            const INITIAL_READ_POLICY = Object.freeze({attemptTimeoutMs: 25000, totalTimeoutMs: 32000});
+            const INITIAL_READ_POLICY = Object.freeze({attemptTimeoutMs: 25000, totalTimeoutMs: 32000, hedgeAfterMs: 3500});
             let lastRead = null;
             let readSequence = 0;
             const readHistory = [];
@@ -44,7 +44,7 @@
                     url.searchParams.has('knownSha') && data.sha256 === url.searchParams.get('knownSha');
                 return classes || unchanged;
             }
-            async function attempt(url, signal, validate, timeoutMs) {
+            async function attempt(url, signal, validate, timeoutMs, onHeaders = () => {}) {
                 const controller = new AbortController();
                 let timer, onCancel;
                 const startedAt = performance.now();
@@ -66,12 +66,16 @@
                         phase = 'body';
                         headerMs = Math.round(performance.now() - startedAt);
                         responseStatus = response.status;
+                        const contentType = response.headers?.get?.('content-type') || '';
+                        const responseType = /json/i.test(contentType) ? 'json' : /html/i.test(contentType) ? 'html' : 'unknown';
+                        const responseHost = response.url ? new URL(response.url).hostname : new URL(request.url).hostname;
+                        onHeaders({headerMs, responseStatus, responseType, responseHost});
                         if (!response.ok) throw errorFor('HTTP', response.status,
                             response.status === 408 || response.status === 429 || response.status >= 500);
                         let data;
                         try { data = await response.json(); }
                         catch (error) {
-                            if (error.name === 'SyntaxError') throw errorFor('INVALID_JSON', 0, true);
+                            if (error.name === 'SyntaxError') throw errorFor(responseType === 'html' ? 'HTML_RESPONSE' : 'INVALID_JSON', response.status, true);
                             throw error;
                         }
                         phase = 'validate';
@@ -106,8 +110,56 @@
                     if (signal.aborted) finish();
                 });
             }
+            // Only a cold score GET can use an early alternate read. Never race writes,
+            // save confirmations, authentication or storage capability requests.
+            function coldScoreRead(url, signal, validate, timeoutMs, hedgeAfterMs, onStart, onFailure, onHeaders) {
+                const group = new AbortController();
+                return new Promise((resolve, reject) => {
+                    let settled = false, alternateStarted = false, active = 0, alternateTimer;
+                    const finish = (error, result) => {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(alternateTimer);
+                        signal.removeEventListener('abort', cancel);
+                        group.abort(errorFor('CANCELLED'));
+                        if (error) reject(error); else resolve(result);
+                    };
+                    const cancel = () => finish(signal.reason || errorFor('CANCELLED'));
+                    const launch = alternate => {
+                        if (settled || (alternate && alternateStarted)) return;
+                        if (alternate) alternateStarted = true;
+                        clearTimeout(alternateTimer);
+                        const nextURL = new URL(url);
+                        if (alternate) { nextURL.searchParams.delete('action'); nextURL.searchParams.delete('knownSha'); }
+                        const number = onStart(alternate);
+                        active++;
+                        attempt(nextURL.toString(), group.signal, validate, timeoutMs,
+                            progress => { if (!settled) onHeaders(number, progress); }).then(result => {
+                            if (!settled) finish(null, {...result, winner:number});
+                        }, error => {
+                            active--;
+                            if (settled) return;
+                            if (signal.aborted) { cancel(); return; }
+                            const failure = onFailure(error, number);
+                            // One failed alternate is not proof that the primary failed.
+                            // In particular, a redirect can return HTML 404 while the
+                            // other anonymous GET still has a valid response on its way.
+                            if (active > 0 && failure.code !== 'SERVER_ERROR') return;
+                            if ((!failure.retryable && failure.status !== 404) || navigator.onLine === false) { finish(failure); return; }
+                            if (!alternateStarted) {
+                                clearTimeout(alternateTimer);
+                                alternateTimer = setTimeout(() => launch(true), RETRY_BASE_DELAY_MS);
+                            } else if (active === 0) finish(failure);
+                        });
+                    };
+                    signal.addEventListener('abort', cancel, {once:true});
+                    if (signal.aborted) { cancel(); return; }
+                    launch(false);
+                    alternateTimer = setTimeout(() => launch(true), hedgeAfterMs);
+                });
+            }
             async function read(url, {signal, validate = scoreResponse, plainFallback = true, operation = 'scores-read',
-                attemptTimeoutMs = ATTEMPT_TIMEOUT_MS, totalTimeoutMs = TOTAL_TIMEOUT_MS} = {}) {
+                attemptTimeoutMs = ATTEMPT_TIMEOUT_MS, totalTimeoutMs = TOTAL_TIMEOUT_MS, hedgeAfterMs = 0} = {}) {
                 attemptTimeoutMs = Math.max(1000, Math.min(25000, Number(attemptTimeoutMs) || ATTEMPT_TIMEOUT_MS));
                 totalTimeoutMs = Math.max(1000, Math.min(32000, Number(totalTimeoutMs) || TOTAL_TIMEOUT_MS));
                 const controller = new AbortController();
@@ -118,8 +170,39 @@
                 const startedAt = performance.now();
                 const requestId = ++readSequence;
                 let attempts = 0;
-                recordRead({requestId, operation, stage: 'started', attemptTimeoutMs, totalTimeoutMs});
+                const useColdFailover = operation === 'scores-read' && plainFallback && Number(hedgeAfterMs) > 0 &&
+                    !new URL(url).searchParams.has('knownSha');
+                recordRead({requestId, operation, stage: 'started', attemptTimeoutMs, totalTimeoutMs,
+                    ...(useColdFailover ? {hedgeAfterMs:Number(hedgeAfterMs)} : {})});
+                const noteHeaders = (number, progress) => recordRead({requestId, operation, stage:'headers-received', attempt:number, ...progress});
+                const noteFailure = (error, number) => {
+                    const code = error.code || (error.name === 'AbortError' ? 'TIMEOUT' : error instanceof TypeError ? 'NETWORK' : 'READ_ERROR');
+                    const failure = errorFor(code, error.status || 0, error.retryable === true || code === 'NETWORK' || code === 'TIMEOUT');
+                    failure.serverCode = error.serverCode;
+                    failure.phase = error.phase;
+                    failure.headerMs = error.headerMs;
+                    failure.responseStatus = error.responseStatus;
+                    recordRead({requestId, operation, stage:'attempt-failed', attempt:number, code,
+                        status:failure.status, responseStatus:error.responseStatus || 0, phase:error.phase,
+                        headerMs:error.headerMs, serverCode:failure.serverCode, elapsedMs:Math.round(performance.now()-startedAt)});
+                    console.warn('Google Sheet request failed', {operation, attempt:number, code,
+                        status:failure.status, elapsedMs:Math.round(performance.now()-startedAt)});
+                    return failure;
+                };
                 try {
+                    if (useColdFailover) {
+                        const result = await coldScoreRead(url, controller.signal, validate, attemptTimeoutMs,
+                            Math.max(1000, Math.min(8000, Number(hedgeAfterMs))), alternate => {
+                                const number = ++attempts;
+                                recordRead({requestId, operation, stage:'attempt-started', attempt:number,
+                                    route:alternate ? 'alternate' : 'primary', elapsedMs:Math.round(performance.now()-startedAt)});
+                                return number;
+                            }, noteFailure, noteHeaders);
+                        lastRead = {operation, attempts, winner:result.winner, elapsedMs:Math.round(performance.now()-startedAt),
+                            status:result.status, code:'OK', headerMs:result.headerMs, bodyMs:result.bodyMs};
+                        recordRead({requestId, stage:'ended', ...lastRead});
+                        return {data:result.data, diagnostics:{...lastRead}};
+                    }
                     for (let index = 0; index < 2; index++) {
                         if (controller.signal.aborted) throw controller.signal.reason;
                         const freshURL = new URL(url);
@@ -129,23 +212,16 @@
                         }
                         attempts++;
                         try {
-                            const result = await attempt(freshURL.toString(), controller.signal, validate, attemptTimeoutMs);
+                            recordRead({requestId, operation, stage:'attempt-started', attempt:attempts, elapsedMs:Math.round(performance.now()-startedAt)});
+                            const result = await attempt(freshURL.toString(), controller.signal, validate, attemptTimeoutMs,
+                                progress => noteHeaders(attempts, progress));
                             lastRead = {operation, attempts, elapsedMs: Math.round(performance.now() - startedAt), status: result.status, code: 'OK',
                                 headerMs: result.headerMs, bodyMs: result.bodyMs};
                             recordRead({requestId, stage: 'ended', ...lastRead});
                             return {data: result.data, diagnostics: {...lastRead}};
                         } catch (error) {
                             if (controller.signal.aborted) throw controller.signal.reason;
-                            const code = error.code || (error.name === 'AbortError' ? 'TIMEOUT' : error instanceof TypeError ? 'NETWORK' : 'READ_ERROR');
-                            const failure = errorFor(code, error.status || 0,
-                                error.retryable === true || code === 'NETWORK' || code === 'TIMEOUT');
-                            failure.serverCode = error.serverCode;
-                            recordRead({requestId, operation, stage: 'attempt-failed', attempt: attempts, code,
-                                status: failure.status, responseStatus: error.responseStatus || 0, phase: error.phase,
-                                headerMs: error.headerMs, serverCode: failure.serverCode,
-                                elapsedMs: Math.round(performance.now() - startedAt)});
-                            console.warn('Google Sheet request failed', {operation, attempt: attempts, code,
-                                status: failure.status, elapsedMs: Math.round(performance.now() - startedAt)});
+                            const failure = noteFailure(error, attempts);
                             if (!failure.retryable || index === 1 || navigator.onLine === false) throw failure;
                             await pause(RETRY_BASE_DELAY_MS * Math.pow(2, index), controller.signal);
                         }
@@ -164,6 +240,7 @@
             function message(error) {
                 if (error?.code === 'SERVER_ERROR') return 'Apps Script แจ้งข้อผิดพลาด (' + (error.serverCode || 'UNKNOWN') + ') กรุณาตรวจระบบจัดเก็บข้อมูล';
                 if (error?.code === 'TIMEOUT') return 'Google Sheet ตอบช้าเกินเวลาที่กำหนด กรุณากดลองอีกครั้ง';
+                if (error?.code === 'HTML_RESPONSE') return 'คำขออ่านคะแนนได้หน้าเว็บกลับมาแทนข้อมูล กรุณากดลองอีกครั้ง';
                 if (error?.code === 'INVALID_JSON' || error?.code === 'INVALID_DATA') return 'คำตอบจาก Google Sheet ไม่ถูกต้อง กรุณากดลองอีกครั้ง';
                 if (error?.code === 'HTTP' && [401, 403].includes(error.status)) return 'เข้าถึง Google Sheet ไม่ได้ กรุณาตรวจสิทธิ์ Apps Script';
                 if (error?.code === 'HTTP') return 'Google Sheet ตอบกลับผิดพลาด (HTTP ' + error.status + ') กรุณากดลองอีกครั้ง';
@@ -173,7 +250,7 @@
                 history: () => readHistory.map(entry => ({...entry}))};
         })();
     </script>
-    <script async src="assets/cloud-read.js?v=20261005-2" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
+    <script async src="assets/cloud-read.js?v=20261005-4" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
     <link rel="stylesheet" href="assets/app.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
