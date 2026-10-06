@@ -44,7 +44,7 @@
                     url.searchParams.has('knownSha') && data.sha256 === url.searchParams.get('knownSha');
                 return classes || unchanged;
             }
-            async function attempt(url, signal, validate, timeoutMs, onHeaders = () => {}) {
+            async function attempt(url, signal, validate, timeoutMs, onHeaders = () => {}, decode = null) {
                 const controller = new AbortController();
                 let timer, onCancel;
                 const startedAt = performance.now();
@@ -73,7 +73,7 @@
                         if (!response.ok) throw errorFor('HTTP', response.status,
                             response.status === 408 || response.status === 429 || response.status >= 500);
                         let data;
-                        try { data = await response.json(); }
+                        try { data = decode ? await decode(response) : await response.json(); }
                         catch (error) {
                             if (error.name === 'SyntaxError') throw errorFor(responseType === 'html' ? 'HTML_RESPONSE' : 'INVALID_JSON', response.status, true);
                             throw error;
@@ -158,8 +158,104 @@
                     alternateTimer = setTimeout(() => launch(true), hedgeAfterMs);
                 });
             }
-            async function read(url, {signal, validate = scoreResponse, plainFallback = true, operation = 'scores-read',
+            function directSource(url) {
+                if (typeof document === 'undefined' || !window.crypto?.subtle) return null;
+                const config = document.querySelector('script[data-sheet-url][data-direct-sheet-id]');
+                if (!config) return null;
+                const requested = new URL(url), expected = new URL(config.dataset.sheetUrl);
+                if (requested.origin !== expected.origin || requested.pathname !== expected.pathname ||
+                    (requested.searchParams.has('action') && requested.searchParams.get('action') !== 'sync')) return null;
+                const id = config.dataset.directSheetId;
+                return /^[A-Za-z0-9_-]+$/.test(id) ? id : null;
+            }
+            async function decodeDirectSheet(response) {
+                const text = await response.text();
+                // Parse Google's data envelope as JSON; never execute its callback as JavaScript.
+                const match = text.match(/^\s*(?:\/\*[\s\S]*?\*\/\s*)?google\.visualization\.Query\.setResponse\(([\s\S]*)\);\s*$/);
+                if (!match) throw errorFor('DIRECT_FORMAT');
+                const result = JSON.parse(match[1]), table = result.table;
+                if (result.status !== 'ok' || !table || table.cols?.map(c => c.id).join(',') !== 'A,B,C' ||
+                    !Array.isArray(table.rows)) throw errorFor('DIRECT_FORMAT');
+                const manifest = JSON.parse(table.rows[0]?.c?.[2]?.v || 'null');
+                if (!manifest || manifest.format !== 'EDUTRACK_CHUNKS_V1' ||
+                    ![1, 2].includes(manifest.column) || !Number.isInteger(manifest.count) ||
+                    manifest.count < 1 || manifest.count > 128 || !Number.isInteger(manifest.characters) ||
+                    manifest.characters < 1 || !/^[a-f0-9]{64}$/.test(manifest.sha256) ||
+                    table.rows.length < manifest.count + 1) throw errorFor('DIRECT_MANIFEST');
+                let encoded = '';
+                for (let index = 1; index <= manifest.count; index++) {
+                    const chunk = table.rows[index]?.c?.[manifest.column - 1]?.v;
+                    if (typeof chunk !== 'string' || !chunk.startsWith('DATA:')) throw errorFor('DIRECT_CHUNK');
+                    encoded += chunk.slice(5);
+                }
+                const binary = atob(encoded), bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+                const json = new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+                if (json.length !== manifest.characters) throw errorFor('DIRECT_LENGTH');
+                const digest = await window.crypto.subtle.digest('SHA-256', bytes);
+                const hash = Array.from(new Uint8Array(digest), v => v.toString(16).padStart(2, '0')).join('');
+                if (hash !== manifest.sha256) throw errorFor('DIRECT_INTEGRITY');
+                return JSON.parse(json);
+            }
+            function readDirectWithFallback(url, options, sheetId) {
+                const startedAt = performance.now(), requestId = ++readSequence;
+                const directController = new AbortController(), scriptController = new AbortController();
+                const totalMs = Math.max(1000, Math.min(32000, Number(options.totalTimeoutMs) || TOTAL_TIMEOUT_MS));
+                recordRead({requestId, operation: 'scores-read', stage: 'started', route: 'direct-sheet', totalTimeoutMs: totalMs});
+                return new Promise(resolve => {
+                    let settled = false, directEnded = false, scriptStarted = false, scriptResult = null;
+                    let scriptTimer, deadlineTimer;
+                    const finish = (result, route) => {
+                        if (settled) return;
+                        settled = true; clearTimeout(scriptTimer); clearTimeout(deadlineTimer);
+                        options.signal?.removeEventListener('abort', cancel);
+                        directController.abort(); scriptController.abort();
+                        lastRead = {operation: 'scores-read', route, elapsedMs: Math.round(performance.now() - startedAt),
+                            attempts: 1 + (scriptStarted ? scriptResult?.diagnostics?.attempts || 1 : 0),
+                            status: result.error ? result.error.status || 0 : 200, code: result.error?.code || 'OK'};
+                        recordRead({requestId, stage: 'ended', ...lastRead});
+                        resolve({...result, diagnostics: {...lastRead}});
+                    };
+                    const cancel = () => finish({error: errorFor('CANCELLED'), cancelled: true}, 'cancelled');
+                    const fallback = () => {
+                        if (settled || scriptStarted) return;
+                        scriptStarted = true; clearTimeout(scriptTimer);
+                        recordRead({requestId, operation: 'scores-read', stage: 'script-fallback-started',
+                            elapsedMs: Math.round(performance.now() - startedAt)});
+                        read(url, {...options, directSheet: false, reportFinal: false, signal: scriptController.signal,
+                            totalTimeoutMs: Math.max(1000, totalMs - (performance.now() - startedAt))}).then(result => {
+                            if (settled) return;
+                            scriptResult = result;
+                            if (!result.error || directEnded) finish(result, 'apps-script');
+                        });
+                    };
+                    options.signal?.addEventListener('abort', cancel, {once: true});
+                    if (options.signal?.aborted) { cancel(); return; }
+                    deadlineTimer = setTimeout(() => finish({error: errorFor('TIMEOUT', 0, true)}, 'deadline'), totalMs);
+                    scriptTimer = setTimeout(fallback, Math.min(1200, Math.max(0, totalMs - 1000)));
+                    const directURL = new URL('https://docs.google.com/spreadsheets/d/' + sheetId + '/gviz/tq');
+                    directURL.search = new URLSearchParams({sheet: 'DatabaseChunks', headers: '0', tqx: 'out:json;reqId:' + Date.now(),
+                        tq: 'select A,B,C', range: 'A1:C129'}).toString();
+                    recordRead({requestId, operation: 'scores-read', stage: 'attempt-started', attempt: 1, route: 'direct-sheet', elapsedMs: 0});
+                    attempt(directURL.toString(), directController.signal, options.validate || scoreResponse,
+                        Math.min(6000, totalMs), progress => {
+                            if (!settled) recordRead({requestId, operation: 'scores-read', stage: 'headers-received', attempt: 1, route: 'direct-sheet', ...progress});
+                        }, decodeDirectSheet).then(result => {
+                            if (!settled) finish({data: result.data}, 'direct-sheet');
+                        }, error => {
+                            if (settled) return;
+                            directEnded = true;
+                            recordRead({requestId, operation: 'scores-read', stage: 'attempt-failed', attempt: 1, route: 'direct-sheet',
+                                code: error.code || 'DIRECT_NETWORK', status: error.status || 0,
+                                elapsedMs: Math.round(performance.now() - startedAt)});
+                            if (scriptResult) finish(scriptResult, 'apps-script'); else fallback();
+                        });
+                });
+            }
+            async function read(url, {signal, validate = scoreResponse, plainFallback = true, operation = 'scores-read', directSheet = true, reportFinal = true,
                 attemptTimeoutMs = ATTEMPT_TIMEOUT_MS, totalTimeoutMs = TOTAL_TIMEOUT_MS, hedgeAfterMs = 0} = {}) {
+                const source = directSheet && operation === 'scores-read' && plainFallback ? directSource(url) : null;
+                if (source) return readDirectWithFallback(url, {signal, validate, plainFallback, operation,
+                    attemptTimeoutMs, totalTimeoutMs, hedgeAfterMs}, source);
                 attemptTimeoutMs = Math.max(1000, Math.min(25000, Number(attemptTimeoutMs) || ATTEMPT_TIMEOUT_MS));
                 totalTimeoutMs = Math.max(1000, Math.min(32000, Number(totalTimeoutMs) || TOTAL_TIMEOUT_MS));
                 const controller = new AbortController();
@@ -198,10 +294,11 @@
                                     route:alternate ? 'alternate' : 'primary', elapsedMs:Math.round(performance.now()-startedAt)});
                                 return number;
                             }, noteFailure, noteHeaders);
-                        lastRead = {operation, attempts, winner:result.winner, elapsedMs:Math.round(performance.now()-startedAt),
+                        const details = {operation, attempts, winner:result.winner, elapsedMs:Math.round(performance.now()-startedAt),
                             status:result.status, code:'OK', headerMs:result.headerMs, bodyMs:result.bodyMs};
-                        recordRead({requestId, stage:'ended', ...lastRead});
-                        return {data:result.data, diagnostics:{...lastRead}};
+                        if (reportFinal) lastRead = details;
+                        recordRead({requestId, stage:'ended', ...details});
+                        return {data:result.data, diagnostics:{...details}};
                     }
                     for (let index = 0; index < 2; index++) {
                         if (controller.signal.aborted) throw controller.signal.reason;
@@ -215,10 +312,11 @@
                             recordRead({requestId, operation, stage:'attempt-started', attempt:attempts, elapsedMs:Math.round(performance.now()-startedAt)});
                             const result = await attempt(freshURL.toString(), controller.signal, validate, attemptTimeoutMs,
                                 progress => noteHeaders(attempts, progress));
-                            lastRead = {operation, attempts, elapsedMs: Math.round(performance.now() - startedAt), status: result.status, code: 'OK',
+                            const details = {operation, attempts, elapsedMs: Math.round(performance.now() - startedAt), status: result.status, code: 'OK',
                                 headerMs: result.headerMs, bodyMs: result.bodyMs};
-                            recordRead({requestId, stage: 'ended', ...lastRead});
-                            return {data: result.data, diagnostics: {...lastRead}};
+                            if (reportFinal) lastRead = details;
+                            recordRead({requestId, stage: 'ended', ...details});
+                            return {data: result.data, diagnostics: {...details}};
                         } catch (error) {
                             if (controller.signal.aborted) throw controller.signal.reason;
                             const failure = noteFailure(error, attempts);
@@ -227,11 +325,12 @@
                         }
                     }
                 } catch (error) {
-                    lastRead = {operation, attempts, elapsedMs: Math.round(performance.now() - startedAt), status: error.status || 0,
+                    const details = {operation, attempts, elapsedMs: Math.round(performance.now() - startedAt), status: error.status || 0,
                         code: error.code || 'READ_ERROR', serverCode: error.serverCode,
                         phase: error.phase, headerMs: error.headerMs, responseStatus: error.responseStatus};
-                    recordRead({requestId, stage: 'ended', ...lastRead});
-                    return {error, cancelled: error.code === 'CANCELLED', diagnostics: {...lastRead}};
+                    if (reportFinal) lastRead = details;
+                    recordRead({requestId, stage: 'ended', ...details});
+                    return {error, cancelled: error.code === 'CANCELLED', diagnostics: {...details}};
                 } finally {
                     clearTimeout(totalTimer);
                     signal?.removeEventListener('abort', cancel);
@@ -250,7 +349,7 @@
                 history: () => readHistory.map(entry => ({...entry}))};
         })();
     </script>
-    <script async src="assets/cloud-read.js?v=20261005-4" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
+    <script async src="assets/cloud-read.js?v=20261006-1" data-direct-sheet-id="1XtgvlAPwhXuc7U5Z4iMo9xxCpIv7WnS3vReQ9paA6zU" data-sheet-url="https://script.google.com/macros/s/AKfycby_swsj3ashNNIzE0IGrU6VPucTAtq6RIhqal5-GL2OQcH2waddE8Z2TCPGO1o1H3WC/exec"></script>
     <link rel="stylesheet" href="assets/app.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
