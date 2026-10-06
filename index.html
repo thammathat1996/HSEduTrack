@@ -574,6 +574,13 @@
         .homework-followup-dialog button:disabled { opacity:.5; cursor:default; }
         #homework-followup-copy-status { min-height:20px; font-size:13px; font-weight:700; }
         #homework-followup-copy-status[data-state="error"] { color:#a12626; }
+        #score-files-status { font-size:13px; line-height:1.6; min-height:22px; }
+        #score-files-status[data-state="error"] { color:#a12626; }
+        #score-files-preview { white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.7; max-height:220px; overflow:auto; }
+        #score-files-preview details { margin-top:10px; padding-top:8px; border-top:1px solid #454955; }
+        #score-files-preview summary { cursor:pointer; font-weight:700; }
+        #score-files-confirm { background:#72B01D; }
+        .score-files-upload { display:block; padding:12px; border:2px solid #454955; background:#D8D6DE; font-weight:700; }
         @media (max-width:639px) {
             .homework-followup-body select, .homework-followup-body input, .homework-followup-body textarea { font-size:16px; }
         }
@@ -655,6 +662,7 @@
     <link rel="stylesheet" href="assets/experience.css?v=20261005-2">
     <script src="assets/experience.js?v=20261005-1" defer></script>
     <script src="assets/connection-report.js?v=20261005-1" defer></script>
+    <script src="assets/score-files.js?v=20261006-3" defer></script>
 </head>
 <body class="antialiased min-h-screen flex flex-col relative z-0 bg-[#F3EFF5] text-[#0D0A0B]">
 
@@ -1079,6 +1087,7 @@
 
                 <div class="w-full lg:w-auto">
                     <div class="teacher-primary-actions">
+                        <button id="teacher-score-files" type="button" onclick="HSScoreFiles.open()" class="bg-[#F3EFF5] hover:bg-[#D8D6DE] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-2 text-xs font-bold cursor-pointer"><svg class="ui-icon icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-download"></use></svg><span>ไฟล์คะแนน Excel</span></button>
                         <button id="teacher-homework-followup" type="button" onclick="openHomeworkFollowup()" class="bg-[#F3EFF5] hover:bg-[#D8D6DE] text-[#0D0A0B] border-[2px] border-[#454955] px-3.5 py-2 text-xs font-bold shadow-[2.5px_2.5px_0px_#0D0A0B] cursor-pointer"><svg class="ui-icon icon-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-clipboard"></use></svg><span>ตามงาน / คัดลอกข้อความ</span></button>
                         <button type="button" onclick="toggleAdminTools()" class="bg-[#72B01D] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2px] border-[#454955] px-4 py-2 text-xs font-black shadow-[2.5px_2.5px_0px_#0D0A0B] transition-colors cursor-pointer"><svg class="ui-icon icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-plus"></use></svg><span>จัดการห้อง / เพิ่มงาน</span></button>
                         <button type="button" onclick="openScannerModal()" class="bg-[#F3EFF5] hover:bg-[#3F7D20] text-[#0D0A0B] hover:text-[#F3EFF5] border-[2px] border-[#454955] px-3.5 py-2 text-xs font-bold shadow-[2.5px_2.5px_0px_#0D0A0B] transition-colors cursor-pointer"><svg class="ui-icon icon-scan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#hs-icon-scan"></use></svg><span>ตรวจงานด้วย QR</span></button>
@@ -1318,6 +1327,32 @@
             <p>กรุณารอสักครู่</p>
         </div>
     </div>
+
+    <dialog id="score-files-dialog" class="homework-followup-dialog" aria-labelledby="score-files-title">
+        <div class="homework-followup-header">
+            <h2 id="score-files-title">กรอกคะแนนออฟไลน์ด้วย Excel</h2>
+            <form method="dialog"><button type="submit" aria-label="ปิดหน้าต่างไฟล์คะแนน">✕</button></form>
+        </div>
+        <div class="homework-followup-body">
+            <p id="score-files-room" class="homework-followup-note"></p>
+            <div class="homework-followup-actions">
+                <button data-export type="button" onclick="HSScoreFiles.download(false)">ดาวน์โหลดคะแนนไปแก้ออฟไลน์</button>
+                <button data-export type="button" onclick="HSScoreFiles.download(true)">ดาวน์โหลดแม่แบบคะแนนว่าง</button>
+            </div>
+            <p class="homework-followup-note">ไฟล์เป็นตาราง Excel ปกติ นักเรียนหนึ่งคนต่อหนึ่งแถว กรอกคะแนนได้ในแต่ละช่อง มีสูตรรวมคะแนนและเกรด เมื่อแก้เสร็จบันทึกเป็น .xlsx แล้วอัปโหลดกลับเพื่ออัปเดตคะแนน</p>
+            <p class="homework-followup-note">ช่องคะแนนที่ยังไม่ส่งหรือรอตรวจจะว่าง ไม่มีข้อความปนในช่วงคะแนน จึงคัดลอกไปโปรแกรมอื่นได้ ส่วนคะแนน 0 จริงยังเป็น 0 การอัปโหลดช่องว่างกลับจะไม่เปลี่ยนสถานะเดิม</p>
+            <p class="homework-followup-note">จำนวนคอลัมน์งานปรับตามห้อง • เพิ่มงานใหม่ด้วยหัวคอลัมน์ “ชื่องาน (เต็ม 10)” • งานเดิมจับคู่ตามชื่อ • ช่องว่างไม่แก้คะแนนเดิม • 0 เป็นคะแนนศูนย์ • ใช้ “ยังไม่ส่ง” เพื่อล้างคะแนน หรือ “รอตรวจ” สำหรับงานที่ส่งแล้ว</p>
+            <label class="score-files-upload" for="score-files-input">เลือกไฟล์คะแนน Excel / CSV
+                <input id="score-files-input" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" onchange="HSScoreFiles.importFile(event)">
+            </label>
+            <p id="score-files-status" role="status" aria-live="polite"></p>
+            <div id="score-files-preview"></div>
+            <div class="homework-followup-actions">
+                <button id="score-files-confirm" type="button" onclick="HSScoreFiles.confirmImport()" disabled>ยืนยันนำเข้าและบันทึกคะแนน</button>
+                <form method="dialog"><button type="submit">ปิด</button></form>
+            </div>
+        </div>
+    </dialog>
 
     <dialog id="homework-followup-dialog" class="homework-followup-dialog" aria-labelledby="homework-followup-title">
         <div class="homework-followup-header">
@@ -3547,12 +3582,12 @@
             cls.assignments.forEach(a => headers.push(`${a.name}(${a.maxScore})`));
             headers.push('คะแนนเก็บ(รวมจริง)', 'จิตพิสัย(10)', 'กลางภาค(20)', 'ปลายภาค(20)', 'พิเศษ', 'รวม(100)', 'เกรด');
             let content = headers.map(h => escapeCSVField(h)).join(',') + '\n';
-            cls.students.sort((a,b)=>a.no - b.no).forEach(std => {
+            [...cls.students].sort((a,b)=>a.no - b.no).forEach(std => {
                 let row = [std.no, std.studentId, std.name];
                 cls.assignments.forEach(a => {
                     let s = std.scores[a.id];
                     if (s === "submitted") row.push('รอตรวจ');
-                    else row.push(s !== null && s !== undefined ? s : '0');
+                    else row.push(s !== null && s !== undefined && s !== '' ? s : '');
                 });
                 const st = calculateStudentScore(std, cls.assignments);
                 row.push(st.assignRawSum, st.att, st.mid, st.fin, st.bonus, st.total, st.grade);
@@ -6605,7 +6640,7 @@ JSON Structure:
             <div class="p-6 space-y-5 overflow-y-auto custom-scrollbar text-[#0D0A0B] bg-[#F3EFF5]">
                 <!-- Option A: CSV Export & Import -->
                 <div class="bg-[#F3EFF5] p-5 border-[4px] border-[#454955] shadow-[5px_5px_0px_#0D0A0B] space-y-4">
-                    <h4 class="font-black text-[#0D0A0B] text-sm uppercase border-b-[3px] border-[#454955] pb-1.5 inline-block bg-[#D8D6DE] px-3">📊 ไฟล์คะแนน CSV</h4>
+                    <h4 class="font-black text-[#0D0A0B] text-sm uppercase border-b-[3px] border-[#454955] pb-1.5 inline-block bg-[#D8D6DE] px-3">📊 ไฟล์คะแนน Excel / CSV</h4>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <button onclick="exportCSV()" class="bg-[#3F7D20] hover:bg-[#72B01D] text-[#FFFFFF] hover:text-[#0D0A0B] border-[3px] border-[#454955] p-4 font-black text-xs uppercase shadow-[3px_3px_0px_#0D0A0B] hover:translate-y-0.5 cursor-pointer flex flex-col items-center gap-2 text-center">
                             <span class="text-2xl">📥</span>
@@ -6613,11 +6648,11 @@ JSON Structure:
                         </button>
                         <label class="bg-[#3F7D20] hover:bg-[#72B01D] text-[#FFFFFF] hover:text-[#0D0A0B] border-[3px] border-[#454955] p-4 font-black text-xs uppercase shadow-[3px_3px_0px_#0D0A0B] hover:translate-y-0.5 cursor-pointer flex flex-col items-center gap-2 text-center">
                             <span class="text-2xl">📤</span>
-                            <span>นำเข้าไฟล์คะแนน (Import CSV)</span>
-                            <input type="file" accept=".csv" class="hidden" onchange="importCSV(event)">
+                            <span>นำเข้าคะแนน Excel / CSV</span>
+                            <input type="file" accept=".xlsx,.csv" class="hidden" onchange="document.getElementById('data-backup-modal').classList.add('hidden'); document.getElementById('data-backup-modal').classList.remove('flex'); HSScoreFiles.open(); HSScoreFiles.importFile(event)">
                         </label>
                     </div>
-                    <button onclick="downloadCsvTemplate()" class="w-full text-center text-xs text-[#3B741D] font-black underline uppercase">📄 ดาวน์โหลดไฟล์แม่แบบ CSV (CSV Template)</button>
+                    <button onclick="document.getElementById('data-backup-modal').classList.add('hidden'); document.getElementById('data-backup-modal').classList.remove('flex'); HSScoreFiles.open()" class="w-full text-center text-xs text-[#3B741D] font-black underline uppercase">📄 แม่แบบคะแนน Excel และส่งออก Excel</button>
                 </div>
 
                 <!-- Option B: Full JSON System Backup -->
